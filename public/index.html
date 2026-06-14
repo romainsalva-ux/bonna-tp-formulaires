@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BONNA TP">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a3a6e">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>BONNA TP — Formulaires Terrain</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#f2f4f8; }
+  #root { min-height:100vh; }
+  #loading {
+    position:fixed; inset:0; background:#1a3a6e;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:16px; z-index:9999;
+  }
+  #loading .logo { background:#e85d1a; color:#fff; font-weight:700; font-size:18px; padding:6px 14px; border-radius:6px; font-family:monospace; }
+  #loading .msg { color:rgba(255,255,255,0.7); font-family:system-ui; font-size:13px; }
+  .spin { width:32px; height:32px; border:3px solid rgba(255,255,255,0.2); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="loading">
+  <div class="logo">BONNA TP</div>
+  <div class="spin"></div>
+  <div class="msg">Chargement de l'application…</div>
+</div>
+<div id="root"></div>
+
+<!-- React + Babel CDN -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+// Variables d'environnement injectées côté serveur via Vercel Edge Config
+// Elles seront remplacées au déploiement
+window.__ENV__ = {
+  SUPABASE_URL: "%%VITE_SUPABASE_URL%%",
+  SUPABASE_KEY: "%%VITE_SUPABASE_ANON_KEY%%"
+};
+</script>
+
+<script type="text/babel" data-presets="react">
+// React hooks via CDN
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ─── PALETTE ────────────────────────────────────────────────────────────────
+const C = {
+  blue: "#1a3a6e", blueMid: "#2356a8", blueLight: "#e8eef8",
+  accent: "#e85d1a", bg: "#f2f4f8", white: "#ffffff",
+  gray: "#8a8f9e", grayLight: "#e2e4ea", text: "#1a1e2e",
+  success: "#1a7a4a", danger: "#c0392b",
+};
+
+// ─── DONNÉES STATIQUES ───────────────────────────────────────────────────────
+const NOTICE_FORMATION = [
+  "Horaires de travail (max 10h/j, 48h/sem)", "Lieux de vie",
+  "Conduite à tenir en cas d'accident", "Accès et issues de secours",
+  "Circulations sur chantier (piétons, engins)",
+  "Dispositifs et mesures de protections collectives",
+  "Droit de retrait en cas de danger grave et imminent",
+  "Poste de travail, responsables de chantier & équipe",
+  "Type de support de plongée", "Moyens d'accès à l'eau", "Type de plongée",
+  "Profondeur maximum", "Type de gaz Fond", "Type de gaz Palier",
+  "Sensibilisation aux situations de plongée dégradée",
+];
+const NOTICE_RISQUES = [
+  "Analyse de Risques spécifique (DU, MSH, PPSPS, Fiches FAS…)",
+  "Risques liés à l'environnement",
+  "Risques liés aux autres entreprises (co-activité, sites industriels)",
+  "Risques exportés par nos travaux",
+  "Retour d'Expérience des précédents Accidents du Travail",
+  "EPC — Protections collectives à mettre en place et/ou à maintenir",
+  "EPI — Protections individuelles spécifiques",
+];
+const NOTICE_DEF = [
+  "Le salarié exécute sa tâche conformément aux directives transmises",
+  "Le salarié respecte les consignes des Analyses de risque présentées",
+  "Le salarié signale à ses supérieurs l'apparition d'un écart ou situation dangereuse",
+  "Le salarié remonte à ses supérieurs toute opportunité d'amélioration QSE",
+];
+const ACCUEIL_RISQUES = [
+  "Remise du livret d'accueil « 020_QSE_IN » de l'OPPBTP",
+  "Présentation : Politique QSE, Organigramme, Règlement Intérieur, Document Unique",
+  "Identifier les RISQUES et MESURES DE PREVENTION",
+  "Travaux INTERDITS pour intérimaires et CDD = Amiante",
+  "Travaux avec Facteurs de Pénibilité = Travaux de nuit / Travaux subaquatiques",
+  "Ne pas utiliser de matériel/outil externe à BONNA TP non contrôlé",
+  "Signaler à son Responsable l'apparition d'un écart ou situation dangereuse",
+];
+const ACCUEIL_ENG = [
+  "Repérer les dangers, pour moi & pour les autres",
+  "Analyser la situation avant d'intervenir", "Respect des consignes",
+  "Alerter en cas de situation dangereuse",
+  "Demande d'explications quand incompréhension", "Soin du matériel",
+  "Utilisation de moyens de manutention pour réduire ses efforts",
+  "Respect des consignes pour les produits dangereux",
+  "Utilisation et maintien des protections collectives",
+  "Port des vêtements de travail et EPI", "Respect des consignes d'hygiène",
+  "Respect des installations d'hygiène mises à disposition",
+];
+const ACCUEIL_EVAL = [
+  "Analyser la situation, repérer les dangers", "Respect des consignes",
+  "Alerter en cas de situation dangereuse",
+  "Demande d'explications quand incompréhension", "Soin du matériel",
+  "Respect des consignes pour les produits dangereux",
+  "Utilisation et maintien des protections collectives",
+  "Port des vêtements de travail et EPI",
+  "Respect des consignes d'hygiène et installations",
+];
+
+const emptyOp = () => ({
+  equipe:"", intervalle:"", heureImm:"", prof:"", tpsFond:"",
+  p12:"", p9:"", p6:"", p3:"", sortie:"", duree:"",
+  airDebut:"", airFin:"", auxDebut:"", auxFin:"",
+  btl:"", aide:"", secours:"", surv:"", coh:""
+});
+const emptySecurite = () => ({
+  date:"", site:"", semaine:"", plongeeNum:"", methode:"", classe:"",
+  melange:"", support:"", etatMer:"", altitude:"", vent:"", houle:"",
+  courant:"", visibilite:"", temps:"", tempEau:"", observations:"",
+  operateurs: Array(5).fill(null).map(emptyOp)
+});
+const emptyNotice = () => ({
+  chantier:"", dateArrivee:"", dateDepart:"", nom:"", prenom:"", poste:"",
+  typeSalarie:"", ctrl1:"", ctrl2:"", ctrl3:"",
+  formation: Object.fromEntries(NOTICE_FORMATION.map((_,i)=>[i,""])),
+  risques: Object.fromEntries(NOTICE_RISQUES.map((_,i)=>[i,""])),
+  definition: Object.fromEntries(NOTICE_DEF.map((_,i)=>[i,""])),
+  profondeur:"", supportType:"", plongeeType:"", gazFond:"", gazPalier:"",
+  respNom:"", salNom:"", dateSign:"", commentaires:"",
+  sigResponsable:"", sigSalarie:"",
+});
+const emptyAccueil = () => ({
+  chantier:"", date:"", nom:"", prenom:"", typeSalarie:"",
+  risques: Object.fromEntries(ACCUEIL_RISQUES.map((_,i)=>[i,false])),
+  engagements: Object.fromEntries(ACCUEIL_ENG.map((_,i)=>[i,false])),
+  evaluation: Object.fromEntries(ACCUEIL_EVAL.map((_,i)=>[i,""])),
+  continuer:"", chefNom:"", salNom:"", dateSign:"", dateEval:"",
+});
+
+// ─── STORAGE ─────────────────────────────────────────────────────────────────
+const LS_KEY = "bonna_docs_v2"; // fallback local
+const SUPABASE_URL = window.__ENV__?.SUPABASE_URL || "";
+const SUPABASE_KEY = window.__ENV__?.SUPABASE_KEY || "";
+
+// ── Supabase helpers ──
+const sbFetch = (path, opts={}) => fetch(`${SUPABASE_URL}/rest/v1${path}`, {
+  ...opts,
+  headers: {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": opts.prefer || "return=representation",
+    ...(opts.headers||{})
+  }
+});
+
+const loadDocs = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"[]"); } catch{ return []; } };
+const saveDocs = (docs) => localStorage.setItem(LS_KEY, JSON.stringify(docs));
+
+// ─── STYLES ──────────────────────────────────────────────────────────────────
+const s = {
+  app: { fontFamily:"'Segoe UI',system-ui,sans-serif", background:C.bg, minHeight:"100vh", fontSize:14, color:C.text },
+  header: { background:C.blue, padding:"12px 16px 8px", position:"sticky", top:0, zIndex:100, boxShadow:"0 2px 12px rgba(0,0,0,0.2)" },
+  logoRow: { display:"flex", alignItems:"center", gap:8, marginBottom:2 },
+  logoBox: { background:C.accent, color:"#fff", fontFamily:"monospace", fontWeight:700, fontSize:11, padding:"2px 7px", borderRadius:4 },
+  appTitle: { color:"#fff", fontWeight:700, fontSize:15 },
+  appSub: { color:"rgba(255,255,255,0.5)", fontSize:10, fontFamily:"monospace" },
+  tabBar: { background:C.blue, display:"flex", borderTop:"1px solid rgba(255,255,255,0.1)", overflowX:"auto" },
+  tabBtn: (active) => ({ flex:1, minWidth:68, padding:"7px 4px", background:"none", border:"none", borderBottom: active ? `3px solid ${C.accent}` : "3px solid transparent", color: active ? "#fff" : "rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:10, fontWeight:active?700:500, cursor:"pointer", textAlign:"center", lineHeight:1.3 }),
+  tabNum: (active) => ({ display:"block", fontFamily:"monospace", fontSize:8, color: active ? C.accent : "rgba(255,255,255,0.3)", marginBottom:1 }),
+  view: { padding:"12px 12px 90px" },
+  card: { background:C.white, borderRadius:10, boxShadow:"0 2px 12px rgba(26,58,110,0.08)", marginBottom:10, overflow:"hidden" },
+  cardHeader: { background:C.blue, color:"#fff", padding:"8px 12px", fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase" },
+  cardBody: { padding:"10px 12px" },
+  label: { fontSize:9, fontWeight:700, color:C.gray, textTransform:"uppercase", letterSpacing:0.5, display:"block", marginBottom:3 },
+  input: { width:"100%", border:`1.5px solid ${C.grayLight}`, borderRadius:7, padding:"8px 10px", fontFamily:"inherit", fontSize:14, color:C.text, background:"#fff", outline:"none", boxSizing:"border-box", display:"block", minHeight:38 },
+  textarea: { width:"100%", border:`1.5px solid ${C.grayLight}`, borderRadius:7, padding:"7px 9px", fontFamily:"inherit", fontSize:13, color:C.text, background:"#fff", outline:"none", resize:"vertical", minHeight:60, boxSizing:"border-box" },
+  row2: { display:"flex", flexDirection:"column", gap:8, marginBottom:10 },
+  row3: { display:"flex", flexDirection:"column", gap:6, marginBottom:10 },
+  fieldRow: { marginBottom:10 },
+  radioGroup: { display:"flex", flexWrap:"wrap", gap:6, marginTop:3 },
+  radioPill: (sel) => ({ display:"inline-flex", alignItems:"center", gap:4, background: sel ? C.blueLight : C.bg, border:`1.5px solid ${sel ? C.blueMid : C.grayLight}`, borderRadius:20, padding:"4px 10px", cursor:"pointer", fontSize:12, fontWeight: sel?700:400, color: sel ? C.blueMid : C.text }),
+  aiBanner: { background:C.white, border:`2px solid ${C.blueMid}`, borderRadius:10, padding:10, marginBottom:12, boxShadow:`0 2px 12px rgba(26,58,110,0.08)` },
+  aiTitle: { fontSize:9, fontFamily:"monospace", color:C.blueMid, fontWeight:700, letterSpacing:0.5, marginBottom:6, display:"flex", alignItems:"center", gap:4 },
+  aiRow: { display:"flex", gap:6 },
+  aiInput: { flex:1, border:`1.5px solid ${C.grayLight}`, borderRadius:7, padding:"8px 10px", fontFamily:"inherit", fontSize:13, outline:"none", background:"#f8faff" },
+  aiBtn: { background:C.blueMid, color:"#fff", border:"none", borderRadius:7, padding:"8px 12px", fontSize:16, cursor:"pointer", flexShrink:0 },
+  aiFeedback: (type) => ({ marginTop:6, fontSize:11, fontStyle:"italic", color: type==="error" ? C.danger : type==="success" ? C.success : C.blueMid, minHeight:14 }),
+  bottomBar: { position:"fixed", bottom:0, left:0, right:0, background:C.white, borderTop:`1px solid ${C.grayLight}`, padding:"10px 12px", display:"flex", gap:8, zIndex:50 },
+  btn: (variant) => ({ flex:1, padding:"11px 6px", border:"none", borderRadius:9, fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:4,
+    background: variant==="primary" ? C.blue : variant==="accent" ? C.accent : C.bg,
+    color: variant==="secondary" ? C.blue : "#fff",
+    border: variant==="secondary" ? `1.5px solid ${C.blueLight}` : "none"
+  }),
+  checkItem: { display:"flex", alignItems:"flex-start", gap:8, padding:"6px 0", borderBottom:`1px solid ${C.grayLight}` },
+  checkLabel: { fontSize:12, lineHeight:1.4, flex:1 },
+  checkGroup: { display:"flex", gap:6, flexShrink:0 },
+  // Penibilité
+  statGrid: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 },
+  statCard: (color) => ({ background:C.white, borderRadius:10, padding:"12px 10px", boxShadow:"0 2px 12px rgba(26,58,110,0.08)", textAlign:"center", borderTop:`4px solid ${color}` }),
+  statVal: { fontFamily:"monospace", fontSize:24, fontWeight:700, color:C.text, lineHeight:1, margin:"3px 0 2px" },
+  statLabel: { fontSize:9, color:C.gray, textTransform:"uppercase", letterSpacing:0.4 },
+  statSub: (color) => ({ fontSize:9, color, fontWeight:700, marginTop:2, fontFamily:"monospace" }),
+  progressBar: { height:6, background:C.grayLight, borderRadius:3, overflow:"hidden", margin:"4px 0" },
+  progressFill: (pct, color) => ({ width:`${pct}%`, height:"100%", borderRadius:3, background:color, transition:"width 0.5s" }),
+  badge: (type) => ({ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:10, fontFamily:"monospace",
+    background: type==="alert"?"#fdecea" : type==="warn"?"#fff3e8" : "#e8f8ee",
+    color: type==="alert"?C.danger : type==="warn"?C.accent : C.success
+  }),
+  infoBanner: { background:C.blueLight, borderLeft:`4px solid ${C.blueMid}`, borderRadius:8, padding:"9px 11px", fontSize:11, color:C.blue, marginBottom:12, lineHeight:1.55 },
+  // Table op
+  tableWrap: { overflowX:"auto" },
+  opTable: { width:"100%", minWidth:540, borderCollapse:"collapse", fontSize:10 },
+  opTh: { background:C.blueLight, color:C.blue, fontWeight:700, fontSize:9, textTransform:"uppercase", padding:"4px 6px", textAlign:"left", border:`1px solid ${C.grayLight}` },
+  opTd: { border:`1px solid ${C.grayLight}`, padding:0 },
+  opLabel: { background:C.blueLight, padding:"5px 6px", fontWeight:700, fontSize:9, color:C.blue },
+  opInput: { width:"100%", border:"none", padding:"5px 6px", fontFamily:"inherit", fontSize:11, background:"transparent", outline:"none" },
+  // Archive
+  archiveCard: { background:C.white, borderRadius:10, boxShadow:"0 2px 10px rgba(26,58,110,0.07)", padding:"11px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:10 },
+  archiveIcon: (type) => ({ width:38, height:38, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, background: type==="securite"?"#fff3e8" : type==="notice"?"#e8f0ff" : "#e8f8ee" }),
+  iconBtn: { width:30, height:30, borderRadius:6, border:`1.5px solid ${C.grayLight}`, background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, cursor:"pointer" },
+  filterChip: (active) => ({ background: active?C.blue:C.white, border:`1.5px solid ${active?C.blue:C.grayLight}`, borderRadius:20, padding:"4px 12px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap", color: active?"#fff":C.text, fontWeight:active?700:400, fontFamily:"inherit" }),
+  sectionTitle: { fontSize:12, fontWeight:700, color:C.blue, margin:"12px 0 7px", display:"flex", alignItems:"center", gap:6 },
+  penibTable: { width:"100%", borderCollapse:"collapse", fontSize:10 },
+  penibTh: { background:C.blueMid, color:"#fff", fontSize:9, textTransform:"uppercase", padding:"5px 7px", textAlign:"left", border:"1px solid rgba(255,255,255,0.2)" },
+  penibTd: { border:`1px solid ${C.grayLight}`, padding:"5px 7px", verticalAlign:"middle" },
+  penibTfoot: { background:C.blue },
+  penibTfootTd: { color:"#fff", fontWeight:700, fontSize:11, padding:"7px", border:`1px solid ${C.blueMid}` },
+};
+
+// ─── COMPOSANTS UTILITAIRES ──────────────────────────────────────────────────
+function Field({ label, children, style }) {
+  return <div style={{...s.fieldRow,...style}}><label style={s.label}>{label}</label>{children}</div>;
+}
+function Input({ value, onChange, type="text", placeholder="" }) {
+  return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={s.input} />;
+}
+function Textarea({ value, onChange, placeholder="" }) {
+  return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={s.textarea} />;
+}
+function RadioPill({ label, selected, onClick }) {
+  return <span style={s.radioPill(selected)} onClick={onClick}>{label}</span>;
+}
+function RadioGroup({ name, options, value, onChange }) {
+  return <div style={s.radioGroup}>{options.map(o=><RadioPill key={o.value||o} label={o.label||o} selected={value===(o.value||o)} onClick={()=>onChange(o.value||o)} />)}</div>;
+}
+function CheckOuiNon({ label, value, onChange }) {
+  return (
+    <div style={s.checkItem}>
+      <div style={s.checkLabel}>{label}</div>
+      <div style={s.checkGroup}>
+        <label style={{display:"flex",alignItems:"center",gap:3,fontSize:10,fontWeight:700,cursor:"pointer",color:C.success}}>
+          <input type="radio" checked={value==="oui"} onChange={()=>onChange("oui")} style={{accentColor:C.blueMid}} /> Oui
+        </label>
+        <label style={{display:"flex",alignItems:"center",gap:3,fontSize:10,fontWeight:700,cursor:"pointer",color:C.danger}}>
+          <input type="radio" checked={value==="non"} onChange={()=>onChange("non")} style={{accentColor:C.blueMid}} /> Non
+        </label>
+      </div>
+    </div>
+  );
+}
+function CheckSimple({ label, checked, onChange }) {
+  return (
+    <div style={{...s.checkItem,cursor:"pointer"}} onClick={()=>onChange(!checked)}>
+      <div style={s.checkLabel}>{label}</div>
+      <div style={{fontSize:18,flexShrink:0}}>{checked?"☑":"☐"}</div>
+    </div>
+  );
+}
+function SectionCard({ title, children, bodyStyle }) {
+  return (
+    <div style={s.card}>
+      <div style={s.cardHeader}>{title}</div>
+      <div style={{...s.cardBody,...bodyStyle}}>{children}</div>
+    </div>
+  );
+}
+function Toast({ message }) {
+  if (!message) return null;
+  return (
+    <div style={{position:"fixed",bottom:75,left:"50%",transform:"translateX(-50%)",background:C.text,color:"#fff",padding:"8px 18px",borderRadius:20,fontSize:12,fontWeight:500,zIndex:300,whiteSpace:"nowrap",boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}}>
+      {message}
+    </div>
+  );
+}
+
+// ─── BARRE IA ─────────────────────────────────────────────────────────────────
+function AIBar({ form, onFill }) {
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState({ msg:"", type:"" });
+  const [loading, setLoading] = useState(false);
+
+  const send = async () => {
+    if (!text.trim()) { setStatus({msg:"Entrez une description…",type:"error"}); return; }
+    setLoading(true); setStatus({msg:"⬡ Analyse en cours…",type:""});
+    const prompts = {
+      securite:`Extrait les infos du texte et réponds UNIQUEMENT en JSON valide sans markdown :
+{"date":"YYYY-MM-DD ou vide","site":"","semaine":"","plongeeNum":"","methode":"narguilé|scaphandre|recycleur ou vide","classe":"A|B ou vide","melange":"","support":"","etatMer":"","altitude":"","vent":"","houle":"","courant":"","visibilite":"","temps":"","tempEau":"","observations":"","operateurs":[{"nom":"","heureImmersion":"","prof":"","tpsFond":""}]}
+Texte: "${text}"`,
+      notice:`Réponds UNIQUEMENT en JSON valide :
+{"chantier":"","dateArrivee":"YYYY-MM-DD ou vide","dateDepart":"YYYY-MM-DD ou vide","nom":"","prenom":"","poste":"","typeSalarie":"CDI|CDD/Intérimaire|Retour arrêt ou vide","profondeur":"","plongeeType":"Narguilé|Bouteille|Inspection|Dérogation ou vide","supportType":"Quai|Navire ou vide","gazFond":"Air|Mélange ou vide","gazPalier":"Air|Mélange|O2 ou vide","respNom":"","salNom":""}
+Texte: "${text}"`,
+      accueil:`Réponds UNIQUEMENT en JSON valide :
+{"chantier":"","date":"YYYY-MM-DD ou vide","nom":"","prenom":"","typeSalarie":"CDD|Intérimaire|Nouvel embauché|Retour arrêt ou vide","chefNom":"","salNom":""}
+Texte: "${text}"`
+    };
+    try {
+      const res = await fetch("/api/analyse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompts[form] })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Erreur HTTP " + res.status);
+      }
+      const data = await res.json();
+      const raw = (data.text || "{}").replace(/```json|```/g, "").trim();
+      onFill(JSON.parse(raw));
+      setStatus({ msg: "✓ Formulaire rempli avec succès !", type: "success" });
+      setText("");
+      setTimeout(() => setStatus({ msg: "", type: "" }), 3000);
+    } catch(e) {
+      setStatus({ msg: "⚠ " + (e.message || "Erreur de connexion"), type: "error" });
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={s.aiBanner}>
+      <div style={s.aiTitle}><span style={{color:C.accent}}>⬡</span> REMPLISSAGE ASSISTÉ PAR IA</div>
+      <div style={s.aiRow}>
+        <input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}
+          placeholder={form==="securite"?"Ex : Site Bordeaux, narguilé, 15m, OP1 Jean Dupont…" : form==="notice"?"Ex : Chantier Lyon, Jean Dupont, CDI, arrivée 10/06/2025…" : "Ex : Marie Martin, CDD, chantier Paris…"}
+          style={s.aiInput} />
+        <button onClick={send} disabled={loading} style={{...s.aiBtn, opacity:loading?0.7:1}}>
+          {loading ? "…" : "➤"}
+        </button>
+      </div>
+      {status.msg && <div style={s.aiFeedback(status.type)}>{status.msg}</div>}
+    </div>
+  );
+}
+
+// ─── TABLE OPÉRATEURS ─────────────────────────────────────────────────────────
+function OpTable({ ops, onChange }) {
+  const upd = (i,k,v) => { const n=[...ops]; n[i]={...n[i],[k]:v}; onChange(n); };
+  return (
+    <div>
+      <div style={s.tableWrap}>
+        <table style={s.opTable}>
+          <thead><tr>
+            {["OP","Équipe / Nom","Interv.","H.imm.","Prof.(m)","Tps fond","12m","9m","6m","3m","H.sortie","Durée"].map(h=><th key={h} style={s.opTh}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {ops.map((op,i)=>(
+              <tr key={i}>
+                <td style={{...s.opTd,...{background:C.blueLight}}}><div style={s.opLabel}>OP{i+1}</div></td>
+                {[["equipe","Nom"],["intervalle",""],["heureImm",""],["prof",""],["tpsFond",""],["p12",""],["p9",""],["p6",""],["p3",""],["sortie",""],["duree",""]].map(([k,ph])=>(
+                  <td key={k} style={s.opTd}><input value={op[k]} onChange={e=>upd(i,k,e.target.value)} placeholder={ph} style={s.opInput} /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{...s.tableWrap,marginTop:1}}>
+        <table style={s.opTable}>
+          <thead><tr>
+            {["OP","Air pr.Début","Air pr.Fin","Air aux.Début","Air aux.Fin","Pres.btl.","Aide Op.","Plg.Secours","Surveillant","COH"].map(h=><th key={h} style={s.opTh}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {ops.map((op,i)=>(
+              <tr key={i}>
+                <td style={{...s.opTd,...{background:C.blueLight}}}><div style={s.opLabel}>OP{i+1}</div></td>
+                {[["airDebut"],["airFin"],["auxDebut"],["auxFin"],["btl"],["aide"],["secours"],["surv"],["coh"]].map(([k])=>(
+                  <td key={k} style={s.opTd}><input value={op[k]} onChange={e=>upd(i,k,e.target.value)} style={s.opInput} /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── VUE FICHE SÉCURITÉ ───────────────────────────────────────────────────────
+function VueSecurite({ data, setData, onSave, onExportPDF }) {
+  const u = (k,v) => setData(p=>({...p,[k]:v}));
+  const applyAI = (d) => {
+    if (d.date) u("date",d.date); if (d.site) u("site",d.site);
+    if (d.semaine) u("semaine",d.semaine); if (d.plongeeNum) u("plongeeNum",d.plongeeNum);
+    if (d.methode) u("methode",d.methode); if (d.classe) u("classe",d.classe);
+    if (d.melange) u("melange",d.melange); if (d.support) u("support",d.support);
+    if (d.etatMer) u("etatMer",d.etatMer); if (d.vent) u("vent",d.vent);
+    if (d.houle) u("houle",d.houle); if (d.courant) u("courant",d.courant);
+    if (d.visibilite) u("visibilite",d.visibilite); if (d.temps) u("temps",d.temps);
+    if (d.tempEau) u("tempEau",d.tempEau); if (d.observations) u("observations",d.observations);
+    if (d.operateurs?.length) {
+      const ops = [...data.operateurs];
+      d.operateurs.forEach((op,i)=>{ if(i<5){ if(op.nom) ops[i]={...ops[i],equipe:op.nom}; if(op.heureImmersion) ops[i]={...ops[i],heureImm:op.heureImmersion}; if(op.prof) ops[i]={...ops[i],prof:op.prof}; if(op.tpsFond) ops[i]={...ops[i],tpsFond:op.tpsFond}; }});
+      u("operateurs",ops);
+    }
+  };
+  return (
+    <div style={s.view}>
+      <AIBar form="securite" onFill={applyAI} />
+      <SectionCard title="Informations générales">
+        <div style={s.row2}>
+          <Field label="Date"><Input type="date" value={data.date} onChange={v=>u("date",v)} /></Field>
+          <Field label="Site"><Input value={data.site} onChange={v=>u("site",v)} placeholder="Nom du site" /></Field>
+        </div>
+        <div style={s.row2}>
+          <Field label="Semaine N°"><Input value={data.semaine} onChange={v=>u("semaine",v)} /></Field>
+          <Field label="Plongée N°"><Input value={data.plongeeNum} onChange={v=>u("plongeeNum",v)} /></Field>
+        </div>
+        <Field label="Méthode utilisée">
+          <RadioGroup value={data.methode} onChange={v=>u("methode",v)} options={[{label:"Narguilé",value:"narguilé"},{label:"Scaphandre autonome",value:"scaphandre"},{label:"Recycleur",value:"recycleur"}]} />
+        </Field>
+        <Field label="Classe"><RadioGroup value={data.classe} onChange={v=>u("classe",v)} options={[{label:"Classe A",value:"A"},{label:"Classe B",value:"B"}]} /></Field>
+        <div style={s.row2}>
+          <Field label="Mélange utilisé"><Input value={data.melange} onChange={v=>u("melange",v)} placeholder="Air, Nitrox…" /></Field>
+          <Field label="Support"><Input value={data.support} onChange={v=>u("support",v)} placeholder="Quai, Navire…" /></Field>
+        </div>
+      </SectionCard>
+      <SectionCard title="Conditions environnementales">
+        <div style={s.row2}>
+          <Field label="État mer / lac / fleuve"><Input value={data.etatMer} onChange={v=>u("etatMer",v)} /></Field>
+          <Field label="Altitude (m)"><Input type="number" value={data.altitude} onChange={v=>u("altitude",v)} /></Field>
+        </div>
+        <div style={s.row3}>
+          <Field label="Vent (Bf)"><Input type="number" value={data.vent} onChange={v=>u("vent",v)} /></Field>
+          <Field label="Houle (m)"><Input type="number" value={data.houle} onChange={v=>u("houle",v)} /></Field>
+          <Field label="Courant"><Input value={data.courant} onChange={v=>u("courant",v)} placeholder="Nd" /></Field>
+        </div>
+        <div style={s.row3}>
+          <Field label="Visibilité (m)"><Input type="number" value={data.visibilite} onChange={v=>u("visibilite",v)} /></Field>
+          <Field label="Temps"><Input value={data.temps} onChange={v=>u("temps",v)} /></Field>
+          <Field label="T° eau (°C)"><Input type="number" value={data.tempEau} onChange={v=>u("tempEau",v)} /></Field>
+        </div>
+      </SectionCard>
+      <SectionCard title="Équipe — Données de plongée" bodyStyle={{padding:0}}>
+        <OpTable ops={data.operateurs} onChange={v=>u("operateurs",v)} />
+      </SectionCard>
+      <SectionCard title="Observations">
+        <Textarea value={data.observations} onChange={v=>u("observations",v)} placeholder="Observations particulières…" />
+      </SectionCard>
+      <div style={s.bottomBar}>
+        <button style={s.btn("secondary")} onClick={()=>setData(emptySecurite())}>🗑 Effacer</button>
+        <button style={s.btn("primary")} onClick={onSave}>💾 Sauvegarder</button>
+        <button style={s.btn("accent")} onClick={onExportPDF}>📄 PDF</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── SIGNATURE PAD ───────────────────────────────────────────────────────────
+function SignaturePad({ label, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [isEmpty, setIsEmpty] = useState(!value);
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+  const lastPos = useRef(null);
+
+  // Initialiser le canvas quand la modale s'ouvre
+  useEffect(() => {
+    if (!open) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (value) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = value;
+    }
+  }, [open]);
+
+  const getPos = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const src = e.touches ? e.touches[0] : e;
+    return {
+      x: (src.clientX - rect.left) * scaleX,
+      y: (src.clientY - rect.top) * scaleY,
+    };
+  };
+
+  const startDraw = (e) => {
+    e.preventDefault();
+    drawing.current = true;
+    const pos = getPos(e, canvasRef.current);
+    lastPos.current = pos;
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#1a3a6e";
+    ctx.fill();
+    setIsEmpty(false);
+  };
+
+  const draw = (e) => {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const pos = getPos(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.strokeStyle = "#1a3a6e";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    lastPos.current = pos;
+  };
+
+  const stopDraw = () => { drawing.current = false; };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setIsEmpty(true);
+  };
+
+  const confirm = () => {
+    if (canvasRef.current) {
+      const data = isEmpty ? "" : canvasRef.current.toDataURL("image/png");
+      onChange(data);
+    }
+    setOpen(false);
+  };
+
+  const cancel = () => setOpen(false);
+
+  return (
+    <>
+      {/* Aperçu compact — clic pour ouvrir */}
+      <div style={{marginBottom:10}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <label style={s.label}>{label}</label>
+          {value && (
+            <button onClick={()=>{onChange(""); setIsEmpty(true);}}
+              style={{background:"none",border:"none",color:C.danger,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"2px 6px"}}>
+              ✕ Effacer
+            </button>
+          )}
+        </div>
+        <div
+          onClick={() => setOpen(true)}
+          style={{
+            border:`2px solid ${value ? C.blueMid : C.grayLight}`,
+            borderRadius:9, background:"#fff", height:72,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            cursor:"pointer", overflow:"hidden", position:"relative",
+          }}
+        >
+          {value ? (
+            <img src={value} style={{width:"100%",height:"100%",objectFit:"contain"}} alt="signature" />
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:C.gray}}>
+              <span style={{fontSize:22}}>✍</span>
+              <span style={{fontSize:11,fontStyle:"italic"}}>Appuyez pour signer</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modale plein écran pour signer */}
+      {open && (
+        <div style={{
+          position:"fixed", inset:0, zIndex:600,
+          background:"rgba(0,0,0,0.7)",
+          display:"flex", flexDirection:"column",
+        }}>
+          {/* Header modale */}
+          <div style={{
+            background:C.blue, padding:"14px 16px",
+            display:"flex", alignItems:"center", justifyContent:"space-between",
+            flexShrink:0,
+          }}>
+            <div>
+              <div style={{color:"#fff",fontWeight:700,fontSize:15}}>{label}</div>
+              <div style={{color:"rgba(255,255,255,0.55)",fontSize:11,marginTop:1}}>Signez dans la zone ci-dessous</div>
+            </div>
+            <button onClick={cancel} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:8,color:"#fff",padding:"7px 14px",fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+              Annuler
+            </button>
+          </div>
+
+          {/* Zone de signature — occupe tout l'espace disponible */}
+          <div style={{flex:1, background:"#f0f4ff", display:"flex", flexDirection:"column", padding:12, gap:10, overflow:"hidden"}}>
+            <div style={{
+              flex:1, background:"#fff",
+              borderRadius:12, border:`2px dashed ${C.blueMid}`,
+              position:"relative", overflow:"hidden", touchAction:"none",
+            }}>
+              {isEmpty && (
+                <div style={{
+                  position:"absolute", inset:0, pointerEvents:"none",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  flexDirection:"column", gap:8,
+                }}>
+                  <span style={{fontSize:40, opacity:0.2}}>✍</span>
+                  <span style={{fontSize:13, color:C.gray, fontStyle:"italic"}}>Tracez votre signature ici</span>
+                </div>
+              )}
+              <canvas
+                ref={canvasRef}
+                width={900}
+                height={400}
+                style={{display:"block", width:"100%", height:"100%", touchAction:"none", cursor:"crosshair"}}
+                onMouseDown={startDraw}
+                onMouseMove={draw}
+                onMouseUp={stopDraw}
+                onMouseLeave={stopDraw}
+                onTouchStart={startDraw}
+                onTouchMove={draw}
+                onTouchEnd={stopDraw}
+              />
+            </div>
+
+            {/* Actions */}
+            <div style={{display:"flex", gap:10, flexShrink:0}}>
+              <button onClick={clear}
+                style={{flex:1, padding:"13px", background:"#fff", border:`1.5px solid ${C.grayLight}`, borderRadius:10, fontFamily:"inherit", fontSize:13, fontWeight:600, cursor:"pointer", color:C.danger}}>
+                🗑 Effacer
+              </button>
+              <button onClick={confirm}
+                style={{flex:2, padding:"13px", background:C.blue, border:"none", borderRadius:10, fontFamily:"inherit", fontSize:14, fontWeight:700, cursor:"pointer", color:"#fff"}}>
+                ✓ Confirmer la signature
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── VUE NOTICE DE POSTE ──────────────────────────────────────────────────────
+function VueNotice({ data, setData, onSave, onExportPDF }) {
+  const u = (k,v) => setData(p=>({...p,[k]:v}));
+  const applyAI = (d) => {
+    ["chantier","dateArrivee","dateDepart","nom","prenom","poste","typeSalarie",
+     "profondeur","plongeeType","supportType","gazFond","gazPalier","respNom","salNom"
+    ].forEach(k=>{ if(d[k]) u(k,d[k]); });
+  };
+  return (
+    <div style={s.view}>
+      <AIBar form="notice" onFill={applyAI} />
+      <SectionCard title="Identification">
+        <div style={s.row2}>
+          <Field label="Chantier"><Input value={data.chantier} onChange={v=>u("chantier",v)} /></Field>
+          <Field label="Date d'arrivée"><Input type="date" value={data.dateArrivee} onChange={v=>u("dateArrivee",v)} /></Field>
+        </div>
+        <div style={s.row2}>
+          <Field label="Nom"><Input value={data.nom} onChange={v=>u("nom",v)} /></Field>
+          <Field label="Date de départ"><Input type="date" value={data.dateDepart} onChange={v=>u("dateDepart",v)} /></Field>
+        </div>
+        <div style={s.row2}>
+          <Field label="Prénom"><Input value={data.prenom} onChange={v=>u("prenom",v)} /></Field>
+          <Field label="Poste"><Input value={data.poste} onChange={v=>u("poste",v)} /></Field>
+        </div>
+        <Field label="Type de salarié">
+          <RadioGroup value={data.typeSalarie} onChange={v=>u("typeSalarie",v)} options={["CDI","CDD/Intérimaire","Retour arrêt > 3 mois"]} />
+        </Field>
+      </SectionCard>
+      <SectionCard title="Contrôles préalables">
+        {[["ctrl1","1. Aptitude médicale et restrictions"],["ctrl2","2. Habilitations nécessaires au chantier"],["ctrl3","3. Sauveteur Secouriste du Travail"]].map(([k,l])=>(
+          <CheckOuiNon key={k} label={l} value={data[k]} onChange={v=>u(k,v)} />
+        ))}
+      </SectionCard>
+      <SectionCard title="Formation au poste de travail">
+        {NOTICE_FORMATION.map((l,i)=><CheckOuiNon key={i} label={l} value={data.formation[i]} onChange={v=>setData(p=>({...p,formation:{...p.formation,[i]:v}}))} />)}
+      </SectionCard>
+      <SectionCard title="Risques et moyens de prévention">
+        {NOTICE_RISQUES.map((l,i)=><CheckOuiNon key={i} label={l} value={data.risques[i]} onChange={v=>setData(p=>({...p,risques:{...p.risques,[i]:v}}))} />)}
+      </SectionCard>
+      <SectionCard title="Définition de fonction">
+        {NOTICE_DEF.map((l,i)=><CheckOuiNon key={i} label={l} value={data.definition[i]} onChange={v=>setData(p=>({...p,definition:{...p.definition,[i]:v}}))} />)}
+      </SectionCard>
+      <SectionCard title="Plongée — détails techniques">
+        <div style={s.row2}>
+          <Field label="Type de support"><RadioGroup value={data.supportType} onChange={v=>u("supportType",v)} options={["Quai","Navire"]} /></Field>
+          <Field label="Profondeur max (m)"><Input type="number" value={data.profondeur} onChange={v=>u("profondeur",v)} /></Field>
+        </div>
+        <Field label="Type de plongée"><RadioGroup value={data.plongeeType} onChange={v=>u("plongeeType",v)} options={["Narguilé","Bouteille","Inspection","Dérogation"]} /></Field>
+        <div style={s.row2}>
+          <Field label="Gaz fond"><RadioGroup value={data.gazFond} onChange={v=>u("gazFond",v)} options={["Air","Mélange"]} /></Field>
+          <Field label="Gaz palier"><RadioGroup value={data.gazPalier} onChange={v=>u("gazPalier",v)} options={["Air","Mélange","O2"]} /></Field>
+        </div>
+      </SectionCard>
+      <SectionCard title="Signatures">
+        <div style={s.row2}>
+          <Field label="Nom Responsable"><Input value={data.respNom} onChange={v=>u("respNom",v)} /></Field>
+          <Field label="Nom Salarié"><Input value={data.salNom} onChange={v=>u("salNom",v)} /></Field>
+        </div>
+        <Field label="Date"><Input type="date" value={data.dateSign} onChange={v=>u("dateSign",v)} /></Field>
+        <Field label="Commentaires (si NON coché)"><Textarea value={data.commentaires} onChange={v=>u("commentaires",v)} /></Field>
+        <SignaturePad label="Signature Responsable" value={data.sigResponsable} onChange={v=>u("sigResponsable",v)} />
+        <SignaturePad label="Signature Salarié" value={data.sigSalarie} onChange={v=>u("sigSalarie",v)} />
+      </SectionCard>
+      <div style={s.bottomBar}>
+        <button style={s.btn("secondary")} onClick={()=>setData(emptyNotice())}>🗑 Effacer</button>
+        <button style={s.btn("primary")} onClick={onSave}>💾 Sauvegarder</button>
+        <button style={s.btn("accent")} onClick={onExportPDF}>📄 PDF</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── VUE ACCUEIL QSE ─────────────────────────────────────────────────────────
+function VueAccueil({ data, setData, onSave, onExportPDF }) {
+  const u = (k,v) => setData(p=>({...p,[k]:v}));
+  const applyAI = (d) => {
+    ["chantier","date","nom","prenom","typeSalarie","chefNom","salNom"].forEach(k=>{ if(d[k]) u(k,d[k]); });
+  };
+  return (
+    <div style={s.view}>
+      <AIBar form="accueil" onFill={applyAI} />
+      <SectionCard title="Identification">
+        <div style={s.row2}>
+          <Field label="Chantier"><Input value={data.chantier} onChange={v=>u("chantier",v)} /></Field>
+          <Field label="Date accueil"><Input type="date" value={data.date} onChange={v=>u("date",v)} /></Field>
+        </div>
+        <div style={s.row2}>
+          <Field label="Nom"><Input value={data.nom} onChange={v=>u("nom",v)} /></Field>
+          <Field label="Prénom"><Input value={data.prenom} onChange={v=>u("prenom",v)} /></Field>
+        </div>
+        <Field label="Type de salarié">
+          <RadioGroup value={data.typeSalarie} onChange={v=>u("typeSalarie",v)} options={["CDD","Intérimaire","Nouvel embauché","Retour arrêt > 3 mois"]} />
+        </Field>
+      </SectionCard>
+      <SectionCard title="A. Présentation des risques">
+        {ACCUEIL_RISQUES.map((l,i)=><CheckSimple key={i} label={l} checked={data.risques[i]} onChange={v=>setData(p=>({...p,risques:{...p.risques,[i]:v}}))} />)}
+      </SectionCard>
+      <SectionCard title="B. Engagements santé & sécurité">
+        {ACCUEIL_ENG.map((l,i)=><CheckSimple key={i} label={l} checked={data.engagements[i]} onChange={v=>setData(p=>({...p,engagements:{...p.engagements,[i]:v}}))} />)}
+      </SectionCard>
+      <SectionCard title="C. Évaluation après 1 semaine">
+        <div style={{overflowX:"auto"}}>
+          <table style={{...s.opTable,minWidth:360}}>
+            <thead><tr><th style={{...s.opTh,minWidth:140}}>Critère</th>{["Mauvais","Moyen","Bon","Très bon"].map(v=><th key={v} style={s.opTh}>{v}</th>)}</tr></thead>
+            <tbody>{ACCUEIL_EVAL.map((l,i)=>(
+              <tr key={i}>
+                <td style={{...s.opTd,padding:"5px 6px",fontSize:11}}>{l}</td>
+                {["mauvais","moyen","bon","tres_bon"].map(v=>(
+                  <td key={v} style={{...s.opTd,textAlign:"center"}}>
+                    <input type="radio" checked={data.evaluation[i]===v} onChange={()=>setData(p=>({...p,evaluation:{...p.evaluation,[i]:v}}))} style={{accentColor:C.blueMid}} />
+                  </td>
+                ))}
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+        <Field label="Reconduire cette personne ?" style={{marginTop:10}}>
+          <RadioGroup value={data.continuer} onChange={v=>u("continuer",v)} options={["Oui","Non"]} />
+        </Field>
+      </SectionCard>
+      <SectionCard title="Signatures">
+        <div style={s.row2}>
+          <Field label="Chef de chantier"><Input value={data.chefNom} onChange={v=>u("chefNom",v)} /></Field>
+          <Field label="Nom Salarié"><Input value={data.salNom} onChange={v=>u("salNom",v)} /></Field>
+        </div>
+        <div style={s.row2}>
+          <Field label="Date accueil"><Input type="date" value={data.dateSign} onChange={v=>u("dateSign",v)} /></Field>
+          <Field label="Date évaluation"><Input type="date" value={data.dateEval} onChange={v=>u("dateEval",v)} /></Field>
+        </div>
+      </SectionCard>
+      <div style={s.bottomBar}>
+        <button style={s.btn("secondary")} onClick={()=>setData(emptyAccueil())}>🗑 Effacer</button>
+        <button style={s.btn("primary")} onClick={onSave}>💾 Sauvegarder</button>
+        <button style={s.btn("accent")} onClick={onExportPDF}>📄 PDF</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── VUE ARCHIVE ─────────────────────────────────────────────────────────────
+function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
+  const [view, setView] = useState("chantiers"); // "chantiers" | "tous"
+  const [chantierOuvert, setChantierOuvert] = useState(null); // nom du chantier ouvert
+  const [filter, setFilter] = useState("tous");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [showNewChantier, setShowNewChantier] = useState(false);
+  const [newChantierNom, setNewChantierNom] = useState("");
+  const [showMoveModal, setShowMoveModal] = useState(null); // doc à déplacer
+  const [chantiers, setChantiers] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("bonna_chantiers") || "[]"); } catch { return []; }
+  });
+
+  // Charger les chantiers depuis Supabase
+  useEffect(() => {
+    if (!SUPABASE_URL || !SUPABASE_KEY) return;
+    sbFetch("/chantiers?order=nom.asc&limit=200")
+      .then(r => r.ok ? r.json() : [])
+      .then(rows => {
+        if (rows.length > 0) {
+          const noms = rows.map(r => r.nom);
+          setChantiers(noms);
+          localStorage.setItem("bonna_chantiers", JSON.stringify(noms));
+        }
+      }).catch(()=>{});
+  }, []);
+
+  const saveChantiers = async (list) => {
+    setChantiers(list);
+    localStorage.setItem("bonna_chantiers", JSON.stringify(list));
+    // Sync Supabase — on remplace toute la liste
+    if (SUPABASE_URL && SUPABASE_KEY) {
+      try {
+        // Supprimer tous puis réinsérer
+        await sbFetch("/chantiers?nom=neq.___", { method: "DELETE", prefer: "return=minimal" });
+        if (list.length > 0) {
+          await sbFetch("/chantiers", {
+            method: "POST", prefer: "return=minimal",
+            body: JSON.stringify(list.map(nom => ({ nom })))
+          });
+        }
+      } catch(e) { console.error("Sync chantiers error:", e); }
+    }
+  };
+
+  const icons  = { securite:"🤿", notice:"📋", accueil:"🛡️" };
+  const labels = { securite:"Fiche Sécurité", notice:"Notice Poste", accueil:"Accueil QSE" };
+
+  // ── Créer un chantier ──
+  const creerChantier = () => {
+    const nom = newChantierNom.trim();
+    if (!nom || chantiers.includes(nom)) return;
+    saveChantiers([...chantiers, nom]);
+    setNewChantierNom("");
+    setShowNewChantier(false);
+  };
+
+  // ── Supprimer un chantier ──
+  const supprimerChantier = (nom) => {
+    if (!confirm(`Supprimer le dossier "${nom}" ?
+Les documents qu'il contient ne seront pas supprimés.`)) return;
+    saveChantiers(chantiers.filter(c => c !== nom));
+    if (chantierOuvert === nom) setChantierOuvert(null);
+  };
+
+  // ── Docs d'un chantier spécifique ──
+  const docsChantier = (nom) => docs.filter(d => d.chantier === nom);
+
+  // ── Docs sans chantier assigné ──
+  const docsSansChantier = docs.filter(d => !chantiers.includes(d.chantier));
+
+  // ── Déplacer un doc vers un chantier ──
+  const deplacerDoc = async (docId, nomChantier) => {
+    if (SUPABASE_URL && SUPABASE_KEY) {
+      try {
+        // Récupérer le doc actuel
+        const res = await sbFetch(`/documents?id=eq.${docId}`);
+        const rows = await res.json();
+        if (rows.length > 0) {
+          const doc = rows[0];
+          const updatedPayload = { ...doc.payload, chantier: nomChantier };
+          await sbFetch(`/documents?id=eq.${docId}`, {
+            method: "PATCH", prefer: "return=minimal",
+            body: JSON.stringify({ chantier: nomChantier, payload: updatedPayload })
+          });
+          // Recharger
+          const allRes = await sbFetch("/documents?order=saved_at.desc&limit=500");
+          const allRows = await allRes.json();
+          const parsed = allRows.map(r => ({ ...r.payload, id: r.id, savedAt: r.saved_at }));
+          // Mettre à jour le state parent via callback
+          window._refreshDocs && window._refreshDocs(parsed);
+        }
+      } catch(e) { console.error(e); }
+    } else {
+      const saved = JSON.parse(localStorage.getItem("bonna_docs_v2") || "[]");
+      const updated = saved.map(d => d.id === docId ? { ...d, chantier: nomChantier } : d);
+      localStorage.setItem("bonna_docs_v2", JSON.stringify(updated));
+    }
+    setShowMoveModal(null);
+  };
+
+  // ── Vue liste filtrée (mode "tous") ──
+  const filtered = docs
+    .filter(d => filter === "tous" || d.type === filter)
+    .sort((a,b) => sortAsc ? a.savedAt.localeCompare(b.savedAt) : b.savedAt.localeCompare(a.savedAt));
+
+  // ── Carte document ──
+  const DocCard = ({ doc }) => (
+    <div style={s.archiveCard}>
+      <div style={s.archiveIcon(doc.type)}>{icons[doc.type]}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          {labels[doc.type]}{doc.nom ? " — "+doc.nom : ""}
+        </div>
+        <div style={{fontSize:10,color:C.gray,marginTop:1,fontFamily:"monospace"}}>
+          {doc.chantier} · {doc.date}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:5}}>
+        <button style={s.iconBtn} title="Déplacer" onClick={()=>setShowMoveModal(doc)}>📁</button>
+        <button style={s.iconBtn} onClick={()=>onEdit(doc)}>✏️</button>
+        <button style={s.iconBtn} onClick={()=>onExportPDF(doc)}>📄</button>
+        <button style={{...s.iconBtn,color:C.danger}} onClick={()=>onDelete(doc.id)}>🗑</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={s.view}>
+
+      {/* ── Header ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:15,fontWeight:700}}>
+          {chantierOuvert ? (
+            <span style={{display:"flex",alignItems:"center",gap:6}}>
+              <button onClick={()=>setChantierOuvert(null)}
+                style={{background:"none",border:"none",cursor:"pointer",fontSize:18,lineHeight:1,padding:0,color:C.blue}}>
+                ←
+              </button>
+              📁 {chantierOuvert}
+            </span>
+          ) : "Documents"}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          {!chantierOuvert && (
+            <>
+              <button
+                onClick={()=>setView(v=>v==="chantiers"?"tous":"chantiers")}
+                style={{background:C.white,border:`1.5px solid ${C.grayLight}`,borderRadius:7,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600,color:view==="chantiers"?C.blueMid:C.gray}}>
+                {view==="chantiers" ? "📋 Liste" : "📁 Chantiers"}
+              </button>
+              {view==="tous" && (
+                <button onClick={()=>setSortAsc(p=>!p)}
+                  style={{background:C.white,border:`1.5px solid ${C.grayLight}`,borderRadius:7,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                  ⇅ {sortAsc?"Date ↑":"Date ↓"}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ══════════ VUE CHANTIERS ══════════ */}
+      {!chantierOuvert && view === "chantiers" && (
+        <>
+          {/* Bouton créer chantier */}
+          {!showNewChantier ? (
+            <button onClick={()=>setShowNewChantier(true)} style={{
+              width:"100%", padding:"12px", marginBottom:12,
+              background:C.white, border:`2px dashed ${C.blueMid}`,
+              borderRadius:10, cursor:"pointer", color:C.blueMid,
+              fontFamily:"inherit", fontSize:13, fontWeight:600,
+              display:"flex", alignItems:"center", justifyContent:"center", gap:6
+            }}>
+              ＋ Créer un dossier chantier
+            </button>
+          ) : (
+            <div style={{background:C.white,borderRadius:10,padding:12,marginBottom:12,boxShadow:s.card.boxShadow}}>
+              <label style={s.label}>Nom du chantier</label>
+              <div style={{display:"flex",gap:8,marginTop:4}}>
+                <input
+                  value={newChantierNom}
+                  onChange={e=>setNewChantierNom(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&creerChantier()}
+                  placeholder="Ex : Port de Bordeaux, Chantier Lyon…"
+                  autoFocus
+                  style={{...s.input,flex:1}}
+                />
+                <button onClick={creerChantier}
+                  style={{background:C.blue,color:"#fff",border:"none",borderRadius:7,padding:"8px 14px",fontFamily:"inherit",fontWeight:700,cursor:"pointer",fontSize:13}}>
+                  Créer
+                </button>
+                <button onClick={()=>{setShowNewChantier(false);setNewChantierNom("");}}
+                  style={{background:C.bg,border:`1.5px solid ${C.grayLight}`,borderRadius:7,padding:"8px 10px",fontFamily:"inherit",cursor:"pointer",fontSize:13}}>
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Liste des dossiers chantiers */}
+          {chantiers.length === 0 && docsSansChantier.length === 0 ? (
+            <div style={{textAlign:"center",padding:"40px 20px",color:C.gray}}>
+              <div style={{fontSize:40,marginBottom:10}}>📂</div>
+              <p style={{fontSize:13}}>Aucun document enregistré.<br/>Créez un dossier chantier pour commencer.</p>
+            </div>
+          ) : (
+            <>
+              {chantiers.map(nom => {
+                const nb = docsChantier(nom).length;
+                return (
+                  <div key={nom} style={{
+                    background:C.white, borderRadius:10,
+                    boxShadow:"0 2px 12px rgba(26,58,110,0.08)",
+                    marginBottom:9, overflow:"hidden"
+                  }}>
+                    <div
+                      onClick={()=>setChantierOuvert(nom)}
+                      style={{
+                        display:"flex", alignItems:"center", gap:12,
+                        padding:"13px 14px", cursor:"pointer",
+                      }}
+                    >
+                      <div style={{
+                        width:42, height:42, borderRadius:10,
+                        background:C.blueLight,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:22, flexShrink:0,
+                      }}>📁</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:14,color:C.text}}>{nom}</div>
+                        <div style={{fontSize:11,color:C.gray,marginTop:1}}>
+                          {nb} document{nb!==1?"s":""}</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button
+                          onClick={e=>{e.stopPropagation();supprimerChantier(nom);}}
+                          style={{...s.iconBtn,color:C.danger}}
+                          title="Supprimer le dossier">🗑</button>
+                        <span style={{color:C.gray,fontSize:18}}>›</span>
+                      </div>
+                    </div>
+                    {/* Mini-aperçu des 2 derniers docs */}
+                    {nb > 0 && (
+                      <div style={{borderTop:`1px solid ${C.grayLight}`,padding:"6px 14px 8px"}}>
+                        {docsChantier(nom).slice(-2).reverse().map(doc=>(
+                          <div key={doc.id} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 0",fontSize:11}}>
+                            <span>{icons[doc.type]}</span>
+                            <span style={{color:C.text,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {labels[doc.type]}{doc.nom?" — "+doc.nom:""}
+                            </span>
+                            <span style={{color:C.gray,fontFamily:"monospace",fontSize:10,flexShrink:0}}>{doc.date}</span>
+                          </div>
+                        ))}
+                        {nb > 2 && <div style={{fontSize:10,color:C.gray,textAlign:"center",marginTop:2}}>+{nb-2} autre{nb-2>1?"s":""}</div>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Docs sans dossier */}
+              {docsSansChantier.length > 0 && (
+                <>
+                  <div style={{fontSize:11,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.5,margin:"12px 0 8px"}}>
+                    Sans dossier ({docsSansChantier.length})
+                  </div>
+                  {docsSansChantier.map(doc=><DocCard key={doc.id} doc={doc} />)}
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* ══════════ VUE CONTENU CHANTIER ══════════ */}
+      {chantierOuvert && (
+        <>
+          <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
+            {["tous","securite","notice","accueil"].map(f=>(
+              <button key={f} style={s.filterChip(filter===f)} onClick={()=>setFilter(f)}>
+                {f==="tous"?"Tous":labels[f]}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const docsF = docsChantier(chantierOuvert)
+              .filter(d=>filter==="tous"||d.type===filter)
+              .sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
+            return docsF.length === 0 ? (
+              <div style={{textAlign:"center",padding:"36px 20px",color:C.gray}}>
+                <div style={{fontSize:36,marginBottom:8}}>📄</div>
+                <p style={{fontSize:13}}>Aucun document dans ce dossier.<br/>
+                Sauvegardez un formulaire avec le chantier "<strong>{chantierOuvert}</strong>",<br/>
+                ou déplacez un document existant ici via 📁.</p>
+              </div>
+            ) : docsF.map(doc=><DocCard key={doc.id} doc={doc} />);
+          })()}
+        </>
+      )}
+
+      {/* ══════════ VUE TOUS LES DOCS ══════════ */}
+      {!chantierOuvert && view === "tous" && (
+        <>
+          <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
+            {["tous","securite","notice","accueil"].map(f=>(
+              <button key={f} style={s.filterChip(filter===f)} onClick={()=>setFilter(f)}>
+                {f==="tous"?"Tous":labels[f]}
+              </button>
+            ))}
+          </div>
+          {filtered.length===0 ? (
+            <div style={{textAlign:"center",padding:"40px 20px",color:C.gray}}>
+              <div style={{fontSize:36,marginBottom:10}}>📂</div>
+              <p style={{fontSize:13}}>Aucun document enregistré.</p>
+            </div>
+          ) : filtered.map(doc=><DocCard key={doc.id} doc={doc} />)}
+        </>
+      )}
+
+      {/* ══════════ MODALE DÉPLACER ══════════ */}
+      {showMoveModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:400,display:"flex",alignItems:"flex-end"}}>
+          <div style={{background:C.white,borderRadius:"16px 16px 0 0",width:"100%",padding:"20px 16px 36px",animation:"slideUp .25s ease"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>📁 Déplacer vers un dossier</div>
+            <div style={{fontSize:12,color:C.gray,marginBottom:16}}>
+              {labels[showMoveModal.type]}{showMoveModal.nom?" — "+showMoveModal.nom:""}
+            </div>
+            {chantiers.length === 0 ? (
+              <div style={{color:C.gray,fontSize:13,textAlign:"center",padding:"16px 0"}}>
+                Aucun dossier créé. Créez d'abord un dossier chantier.
+              </div>
+            ) : chantiers.map(nom=>(
+              <div key={nom}
+                onClick={()=>deplacerDoc(showMoveModal.id, nom)}
+                style={{
+                  display:"flex",alignItems:"center",gap:10,
+                  padding:"12px 14px",borderRadius:10,marginBottom:7,
+                  background: showMoveModal.chantier===nom ? C.blueLight : C.bg,
+                  border:`1.5px solid ${showMoveModal.chantier===nom ? C.blueMid : C.grayLight}`,
+                  cursor:"pointer",
+                }}
+              >
+                <span style={{fontSize:20}}>📁</span>
+                <span style={{fontWeight:600,fontSize:13,flex:1}}>{nom}</span>
+                <span style={{fontSize:11,color:C.gray}}>{docsChantier(nom).length} doc{docsChantier(nom).length!==1?"s":""}</span>
+                {showMoveModal.chantier===nom && <span style={{color:C.blueMid,fontWeight:700}}>✓</span>}
+              </div>
+            ))}
+            <button onClick={()=>setShowMoveModal(null)}
+              style={{width:"100%",marginTop:8,padding:"12px",background:C.bg,border:`1.5px solid ${C.grayLight}`,borderRadius:10,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer",color:C.gray}}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ─── VUE PÉNIBILITÉ ──────────────────────────────────────────────────────────
+function VuePenibilite({ docs }) {
+  const [expanded, setExpanded] = useState({});
+
+  const plongees = docs.filter(d=>d.type==="securite").flatMap(fiche=>
+    (fiche.data.operateurs||[]).flatMap(op=>{
+      const prof=parseFloat(op.prof);
+      if(!op.equipe||isNaN(prof)||prof<=12) return [];
+      return [{nom:op.equipe,profondeur:prof,tpsFond:parseFloat(op.tpsFond)||null,duree:parseFloat(op.duree)||null,date:fiche.data.date||fiche.date||"—",site:fiche.data.site||fiche.chantier||"—",methode:fiche.data.methode||""}];
+    })
+  );
+
+  const total = plongees.length;
+  const profMoy = total ? (plongees.reduce((s,p)=>s+p.profondeur,0)/total).toFixed(1) : "—";
+  const byNom = {};
+  plongees.forEach(p=>{ if(!byNom[p.nom]) byNom[p.nom]=[]; byNom[p.nom].push(p); });
+  const nbAlert = Object.values(byNom).filter(a=>a.length>=60).length;
+
+  const exportCSV = () => {
+    if (!total) { alert("Aucune donnée à exporter"); return; }
+    // ── SheetJS xlsx ──
+    const XLSX = window.XLSX_LIB;
+    if (XLSX) {
+      const wb = XLSX.utils.book_new();
+      // Feuille 1 — Registre
+      const rows1 = [
+        ["BONNA TP — DOSSIER PÉNIBILITÉ PLONGEURS"],
+        [`Exporté le : ${new Date().toLocaleDateString("fr-FR")}`],
+        [],
+        ["N°","Nom du plongeur","Date","Site / Chantier","Profondeur (m)","Temps fond (min)","Durée totale (min)","Méthode"],
+        ...plongees.map((p,i) => [i+1, p.nom, p.date, p.site, p.profondeur, p.tpsFond||"", p.duree||"", p.methode||""]),
+        [],
+        ["TOTAL PLONGÉES > 12m :", total],
+      ];
+      const ws1 = XLSX.utils.aoa_to_sheet(rows1);
+      ws1["!cols"] = [{wch:4},{wch:20},{wch:12},{wch:22},{wch:13},{wch:16},{wch:16},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, ws1, "Registre >12m");
+      // Feuille 2 — Synthèse
+      const rows2 = [
+        ["SYNTHÈSE PAR PLONGEUR"],
+        [],
+        ["Nom","Nb plongées >12m","Prof. moy. (m)","Tps fond total (min)","Seuil annuel","Statut C2P"],
+        ...Object.entries(byNom).map(([n,a]) => {
+          const nb=a.length, pm=(a.reduce((s,x)=>s+x.profondeur,0)/nb).toFixed(1), tt=a.reduce((s,x)=>s+(x.tpsFond||0),0);
+          return [n, nb, parseFloat(pm), tt, 60, nb>=60?"⚠ SEUIL ATTEINT":nb>=48?"→ Proche":"✓ OK"];
+        }),
+      ];
+      const ws2 = XLSX.utils.aoa_to_sheet(rows2);
+      ws2["!cols"] = [{wch:20},{wch:16},{wch:14},{wch:20},{wch:12},{wch:18}];
+      XLSX.utils.book_append_sheet(wb, ws2, "Synthèse par plongeur");
+      XLSX.writeFile(wb, `Penibilite_BONNATP_${new Date().toISOString().slice(0,10)}.xlsx`);
+    } else {
+      // Fallback CSV si SheetJS non dispo
+      let csv = "\uFEFF";
+      csv += "BONNA TP — DOSSIER PÉNIBILITÉ\n";
+      csv += "Nom;Profondeur (m);Temps fond (min);Durée (min);Date;Site;Méthode\n";
+      plongees.forEach(p => { csv += `${p.nom};${p.profondeur};${p.tpsFond||""};${p.duree||""};${p.date};${p.site};${p.methode}\n`; });
+      csv += `\nTOTAL;${total}\n`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8;"}));
+      a.download = `Penibilite_BONNATP_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+  };
+
+  const exportPDF = () => {
+    if (!total) { alert("Aucune donnée à exporter"); return; }
+    const date = new Date().toLocaleDateString("fr-FR");
+    const pm = (plongees.reduce((s,p)=>s+p.profondeur,0)/plongees.length).toFixed(1);
+    const rows = plongees.map((p,i) =>
+      `<tr><td>${i+1}</td><td><b>${p.nom}</b></td><td>${p.date}</td><td>${p.site}</td>
+      <td style="text-align:center;${p.profondeur>20?"color:#e85d1a;font-weight:bold":""}">${p.profondeur}</td>
+      <td style="text-align:center">${p.tpsFond||"—"}</td><td style="text-align:center">${p.duree||"—"}</td>
+      <td>${p.methode||"—"}</td></tr>`).join("");
+    const synthRows = Object.entries(byNom).map(([n,a]) => {
+      const nb=a.length, p2=(a.reduce((s,x)=>s+x.profondeur,0)/nb).toFixed(1), tt=a.reduce((s,x)=>s+(x.tpsFond||0),0);
+      const st=nb>=60?"⚠ SEUIL ATTEINT":nb>=48?"→ Proche":"✓ OK";
+      const cls=nb>=60?"alert":nb>=48?"warn":"ok";
+      return `<tr><td><b>${n}</b></td><td style="text-align:center"><b>${nb}</b></td>
+        <td style="text-align:center">${p2}</td><td style="text-align:center">${tt}</td>
+        <td style="text-align:center">60</td><td class="${cls}">${st}</td></tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pénibilité BONNA TP</title>
+      <style>body{font-family:Arial,sans-serif;font-size:11px;padding:15px;margin:0}
+      h1{font-size:14px;color:#1a3a6e;border-bottom:3px solid #1a3a6e;padding-bottom:5px}
+      h2{font-size:11px;background:#1a3a6e;color:#fff;padding:5px 9px;margin:12px 0 5px}
+      .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:9px 0}
+      .stat{border:2px solid #2356a8;border-radius:5px;padding:7px;text-align:center}
+      .sv{font-size:18px;font-weight:bold;color:#e85d1a}.sl{font-size:9px;color:#666;text-transform:uppercase}
+      table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:10px}
+      th{background:#2356a8;color:#fff;padding:4px 6px;text-align:left;border:1px solid #ccc}
+      td{border:1px solid #ccc;padding:4px 6px}tr:nth-child(even)td{background:#f4f5f7}
+      .ok{color:#1a7a4a}.warn{color:#e85d1a}.alert{color:#c0392b;font-weight:bold}
+      .tr-tot td{background:#1a3a6e!important;color:#fff!important;font-weight:bold!important}
+      .info{background:#e8eef8;border-left:3px solid #2356a8;padding:7px 9px;font-size:9px;margin-top:10px}
+      .note{background:#fff3e8;border-left:3px solid #e85d1a;padding:6px 9px;font-size:10px;margin-top:8px}
+      </style></head><body>
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+        <div style="background:#e85d1a;color:#fff;font-weight:bold;padding:3px 9px;font-size:12px">BONNA TP</div>
+        <span style="color:#888;font-size:10px">${date}</span>
+      </div>
+      <h1>DOSSIER PÉNIBILITÉ PLONGEURS — Facteur C2P</h1>
+      <div class="stats">
+        <div class="stat"><div class="sv">${total}</div><div class="sl">Total &gt;12m</div></div>
+        <div class="stat"><div class="sv">${Object.keys(byNom).length}</div><div class="sl">Plongeurs</div></div>
+        <div class="stat"><div class="sv">${pm}m</div><div class="sl">Prof. moyenne</div></div>
+        <div class="stat"><div class="sv">${nbAlert}</div><div class="sl">Seuil atteint</div></div>
+      </div>
+      <h2>SYNTHÈSE PAR PLONGEUR</h2>
+      <table><thead><tr><th>Nom</th><th>Nb &gt;12m</th><th>Prof.moy(m)</th>
+        <th>Tps fond(min)</th><th>Seuil/an</th><th>Statut C2P</th></tr></thead>
+      <tbody>${synthRows}</tbody></table>
+      <h2>REGISTRE DÉTAILLÉ</h2>
+      <table><thead><tr><th>N°</th><th>Nom</th><th>Date</th><th>Site</th>
+        <th>Prof(m)</th><th>Tps fond</th><th>Durée</th><th>Méthode</th></tr></thead>
+      <tbody>${rows}
+      <tr class="tr-tot"><td colspan="4" style="text-align:right">TOTAL :</td>
+        <td colspan="4">${total} plongée${total>1?"s":""}</td></tr>
+      </tbody></table>
+      <div class="info">⚖ Décret n°2015-1888 — Seuil 60 interventions/an. À transmettre à la médecine du travail.</div>
+      <div class="note">📱 iPhone : Partager → Imprimer ou Enregistrer en PDF</div>
+    </body></html>`;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+    a.download = `Penibilite_BONNATP_${new Date().toISOString().slice(0,10)}.html`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  return (
+    <div style={s.view}>
+      <div style={s.infoBanner}>
+        <strong>⚖ Facteur de pénibilité C2P — Travaux subaquatiques</strong><br/>
+        Seuil : <strong>60 plongées/an à profondeur &gt; 12 m</strong> (décret n°2015-1888).<br/>
+        Se remplit automatiquement depuis les Fiches de Sécurité sauvegardées.
+      </div>
+
+      <div style={s.statGrid}>
+        {[[total,"Total plongées >12m","seuil : 60/an",C.accent],[Object.keys(byNom).length,"Plongeurs exposés","actifs",C.blueMid],[total?profMoy+"m":"—","Prof. moyenne","mètres",C.success],[nbAlert,"Seuil atteint","plongeur(s)",C.danger]].map(([v,l,sub,color],i)=>(
+          <div key={i} style={s.statCard(color)}>
+            <div style={s.statLabel}>{l}</div>
+            <div style={s.statVal}>{v}</div>
+            <div style={s.statSub(color)}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={s.sectionTitle}><span style={{display:"block",width:4,height:16,background:C.accent,borderRadius:2}}></span>Synthèse par plongeur</div>
+
+      {total===0 ? (
+        <div style={{textAlign:"center",padding:"28px 20px",color:C.gray,fontSize:13}}>
+          <div style={{fontSize:36,marginBottom:8}}>🤿</div>
+          Aucune plongée &gt; 12m trouvée.<br/>Remplissez et sauvegardez des Fiches de Sécurité.
+        </div>
+      ) : Object.entries(byNom).sort((a,b)=>b[1].length-a[1].length).map(([nom,arr])=>{
+        const nb=arr.length, pct=Math.min((nb/60)*100,100), st=nb>=60?"alert":nb>=48?"warn":"ok";
+        const stLabel=nb>=60?"⚠ SEUIL ATTEINT":nb>=48?"→ Proche du seuil":"✓ OK";
+        const pm=(arr.reduce((s,p)=>s+p.profondeur,0)/nb).toFixed(1);
+        const tt=arr.reduce((s,p)=>s+(p.tpsFond||0),0);
+        const color=nb>=60?C.danger:nb>=48?C.accent:C.success;
+        return (
+          <div key={nom} style={{...s.card,marginBottom:10}}>
+            <div style={{padding:"11px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontWeight:700,fontSize:14}}>🤿 {nom}</div>
+                <div style={s.badge(st)}>{stLabel}</div>
+              </div>
+              <div style={{fontSize:12,color:C.gray,marginBottom:3}}>
+                <span style={{fontFamily:"monospace",fontWeight:700,fontSize:15,color:C.text}}>{nb}</span> / 60 plongées annuelles
+              </div>
+              <div style={s.progressBar}><div style={s.progressFill(pct,color)}></div></div>
+              <div style={{display:"flex",gap:12,fontSize:11,color:C.gray,marginTop:3}}>
+                Prof. moy. <strong style={{color:C.text,fontFamily:"monospace"}}>{pm}m</strong>
+                &nbsp;·&nbsp; Temps fond tot. <strong style={{color:C.text,fontFamily:"monospace"}}>{tt} min</strong>
+              </div>
+              <button onClick={()=>setExpanded(p=>({...p,[nom]:!p[nom]}))} style={{background:"none",border:"none",cursor:"pointer",color:C.blueMid,fontSize:11,fontWeight:700,padding:"5px 0 0",fontFamily:"inherit"}}>
+                {expanded[nom]?"▾":"▸"} Voir les {nb} plongée{nb>1?"s":""} détaillées
+              </button>
+              {expanded[nom] && (
+                <div style={{marginTop:6}}>
+                  {arr.slice().sort((a,b)=>b.date.localeCompare(a.date)).map((p,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.grayLight}`,fontSize:12}}>
+                      <div style={{background:p.profondeur>20?"#fff3e8":C.blueLight,color:p.profondeur>20?C.accent:C.blueMid,fontFamily:"monospace",fontWeight:700,fontSize:11,padding:"2px 7px",borderRadius:5,flexShrink:0,minWidth:46,textAlign:"center"}}>{p.profondeur}m</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:500}}>{p.site}</div>
+                        <div style={{color:C.gray,fontSize:10,fontFamily:"monospace"}}>{p.date}{p.tpsFond?" · "+p.tpsFond+" min fond":""}{p.methode?" · "+p.methode:""}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {total>0 && (
+        <>
+          <div style={s.sectionTitle}><span style={{display:"block",width:4,height:16,background:C.accent,borderRadius:2}}></span>Registre complet</div>
+          <div style={s.card}>
+            <div style={s.cardHeader}>Toutes les plongées &gt; 12m</div>
+            <div style={{...s.cardBody,padding:0,overflowX:"auto"}}>
+              <table style={{...s.penibTable,minWidth:480}}>
+                <thead><tr>
+                  {["N°","Nom du plongeur","Date","Site","Prof.(m)","Tps fond(min)","Durée(min)","Méthode"].map(h=><th key={h} style={s.penibTh}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {plongees.slice().sort((a,b)=>b.date.localeCompare(a.date)).map((p,i)=>(
+                    <tr key={i} style={{background:i%2===0?"#fff":C.bg}}>
+                      <td style={{...s.penibTd,textAlign:"center"}}>{i+1}</td>
+                      <td style={{...s.penibTd,fontWeight:600}}>{p.nom}</td>
+                      <td style={{...s.penibTd,textAlign:"center",fontFamily:"monospace",fontSize:10}}>{p.date}</td>
+                      <td style={s.penibTd}>{p.site}</td>
+                      <td style={{...s.penibTd,textAlign:"center",fontWeight:p.profondeur>20?700:400,color:p.profondeur>20?C.accent:C.text}}>{p.profondeur}</td>
+                      <td style={{...s.penibTd,textAlign:"center"}}>{p.tpsFond||"—"}</td>
+                      <td style={{...s.penibTd,textAlign:"center"}}>{p.duree||"—"}</td>
+                      <td style={s.penibTd}>{p.methode||"—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{background:C.blue}}>
+                    <td colSpan={4} style={{...s.penibTfootTd,textAlign:"right"}}>TOTAL — Plongées &gt; 12m :</td>
+                    <td colSpan={4} style={{...s.penibTfootTd,fontSize:14}}>{total} plongée{total>1?"s":""}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div style={{display:"flex",gap:9,marginTop:4}}>
+        <button style={{...s.btn("primary"),flex:1}} onClick={exportCSV}>📊 Export Excel / CSV</button>
+        <button style={{...s.btn("secondary"),flex:1}} onClick={exportPDF}>📄 Export PDF</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
+function App() {
+  // Charger SheetJS
+  useEffect(() => {
+    if (window.XLSX_LIB) return;
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => { window.XLSX_LIB = window.XLSX || XLSX; };
+    document.head.appendChild(script);
+  }, []);
+
+  const [tab, setTab] = useState("securite");
+  const [securite, setSecurite] = useState(emptySecurite);
+  const [notice, setNotice] = useState(emptyNotice);
+  const [accueil, setAccueil] = useState(emptyAccueil);
+  const [docs, setDocs] = useState(loadDocs);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
+  const [toast, setToast] = useState("");
+
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+
+  // ── Charger depuis Supabase ──
+  const fetchDocs = async () => {
+    if (!SUPABASE_URL || !SUPABASE_KEY) return;
+    try {
+      setSyncing(true);
+      const res = await sbFetch("/documents?order=saved_at.desc&limit=500");
+      if (!res.ok) return;
+      const rows = await res.json();
+      const parsed = rows.map(r => ({ ...r.payload, id: r.id, savedAt: r.saved_at }));
+      setDocs(parsed);
+      saveDocs(parsed); // cache local
+      setLastSync(new Date());
+    } catch(e) {
+      console.error("Sync error:", e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Charger au démarrage + polling toutes les 30s
+  useEffect(() => {
+    fetchDocs();
+    const interval = setInterval(fetchDocs, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const showToast2 = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+
+  const saveDoc = async (type, data) => {
+    const labels={securite:"Fiche Sécurité",notice:"Notice Poste Hyperbare",accueil:"Accueil QSE Renforcé"};
+    const newDoc = {
+      id: Date.now(),
+      type, label: labels[type],
+      chantier: data.site||data.chantier||"—",
+      date: data.date||data.dateArrivee||new Date().toISOString().slice(0,10),
+      nom: data.nom ? `${data.nom} ${data.prenom||""}`.trim() : "",
+      data,
+      savedAt: new Date().toISOString()
+    };
+
+    // Sauvegarder dans Supabase
+    if (SUPABASE_URL && SUPABASE_KEY) {
+      try {
+        await sbFetch("/documents", {
+          method: "POST",
+          prefer: "return=minimal",
+          body: JSON.stringify({
+            id: newDoc.id,
+            type: newDoc.type,
+            chantier: newDoc.chantier,
+            date: newDoc.date,
+            nom: newDoc.nom,
+            saved_at: newDoc.savedAt,
+            payload: newDoc
+          })
+        });
+        await fetchDocs(); // recharger pour tous
+        showToast("✓ Document sauvegardé et synchronisé");
+      } catch(e) {
+        // Fallback local
+        const updated=[...docs,newDoc];
+        saveDocs(updated); setDocs(updated);
+        showToast("✓ Sauvegardé localement (hors ligne)");
+      }
+    } else {
+      const updated=[...docs,newDoc];
+      saveDocs(updated); setDocs(updated);
+      showToast("✓ Document sauvegardé");
+    }
+  };
+
+  const deleteDoc = async (id) => {
+    if(!confirm("Supprimer ce document ?")) return;
+    if (SUPABASE_URL && SUPABASE_KEY) {
+      try {
+        await sbFetch(`/documents?id=eq.${id}`, { method: "DELETE", prefer: "return=minimal" });
+        await fetchDocs();
+      } catch(e) {
+        const updated=docs.filter(d=>d.id!==id);
+        saveDocs(updated); setDocs(updated);
+      }
+    } else {
+      const updated=docs.filter(d=>d.id!==id);
+      saveDocs(updated); setDocs(updated);
+    }
+    showToast("Document supprimé");
+  };
+
+  const editDoc = (doc) => {
+    if(doc.type==="securite") setSecurite({...emptySecurite(),...doc.data,operateurs:(doc.data.operateurs||[]).map(op=>({...emptyOp(),...op}))});
+    if(doc.type==="notice") setNotice({...emptyNotice(),...doc.data});
+    if(doc.type==="accueil") setAccueil({...emptyAccueil(),...doc.data});
+    setTab(doc.type);
+    showToast("Formulaire chargé — modifiez puis resauvegardez");
+  };
+
+  // ── télécharge un blob HTML → ouvrir dans Safari → Partager → Imprimer
+  const dlBlob = (content, filename, mime) => {
+    const blob = new Blob([content], { type: mime });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const genPDF = (type, data) => {
+    const date = new Date().toLocaleDateString("fr-FR");
+    const css = `body{font-family:Arial,sans-serif;font-size:11px;padding:15px;margin:0}
+      h1{font-size:14px;text-align:center;border-bottom:2px solid #1a3a6e;padding-bottom:5px;color:#1a3a6e;margin-bottom:8px}
+      h2{font-size:11px;background:#1a3a6e;color:#fff;padding:5px 9px;margin:10px 0 5px}
+      table{width:100%;border-collapse:collapse;margin-bottom:9px}
+      th{background:#e8eef8;font-size:9px;padding:4px 6px;border:1px solid #ccc;text-align:left}
+      td{border:1px solid #ccc;padding:4px 6px;font-size:10px}
+      .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .f{display:flex;margin-bottom:4px;gap:6px;font-size:11px}
+      .f b{min-width:130px;flex-shrink:0}
+      .f span{border-bottom:1px solid #bbb;flex:1;padding-left:3px}
+      .logo{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+      .logo-box{background:#e85d1a;color:#fff;font-weight:bold;padding:3px 9px;font-size:12px}
+      .note{background:#e8eef8;border-left:3px solid #2356a8;padding:6px 9px;font-size:10px;margin-top:8px;font-style:italic}
+      @media print{@page{margin:10mm}}`;
+
+    let body = "";
+    if (type === "securite") {
+      const ops = (data.operateurs||[]).map((op,i) =>
+        `<tr><td>OP${i+1}</td><td>${op.equipe||""}</td><td>${op.heureImm||""}</td>
+        <td>${op.prof||""}</td><td>${op.tpsFond||""}</td>
+        <td>${op.p12||""}</td><td>${op.p9||""}</td><td>${op.p6||""}</td><td>${op.p3||""}</td>
+        <td>${op.sortie||""}</td><td>${op.duree||""}</td></tr>`).join("");
+      body = `<h1>FICHE DE SÉCURITÉ</h1>
+        <div class="g2">
+          <div class="f"><b>Date :</b><span>${data.date||""}</span></div>
+          <div class="f"><b>Site :</b><span>${data.site||""}</span></div>
+          <div class="f"><b>Semaine N° :</b><span>${data.semaine||""}</span></div>
+          <div class="f"><b>Plongée N° :</b><span>${data.plongeeNum||""}</span></div>
+          <div class="f"><b>Méthode :</b><span>${data.methode||""}</span></div>
+          <div class="f"><b>Classe :</b><span>${data.classe||""}</span></div>
+          <div class="f"><b>Mélange :</b><span>${data.melange||""}</span></div>
+          <div class="f"><b>Support :</b><span>${data.support||""}</span></div>
+          <div class="f"><b>État mer :</b><span>${data.etatMer||""}</span></div>
+          <div class="f"><b>T° eau :</b><span>${data.tempEau||""} °C</span></div>
+          <div class="f"><b>Vent :</b><span>${data.vent||""} Bf</span></div>
+          <div class="f"><b>Visibilité :</b><span>${data.visibilite||""} m</span></div>
+        </div>
+        <h2>Équipe — Données de plongée</h2>
+        <table><thead><tr><th>OP</th><th>Équipe</th><th>H.imm.</th><th>Prof.</th>
+          <th>Tps fond</th><th>12m</th><th>9m</th><th>6m</th><th>3m</th>
+          <th>H.sortie</th><th>Durée</th></tr></thead>
+          <tbody>${ops}</tbody></table>
+        <h2>Observations</h2>
+        <div style="border:1px solid #ccc;min-height:40px;padding:6px;font-size:11px">${data.observations||""}</div>`;
+    } else if (type === "notice") {
+      const sigRespHtml = data.sigResponsable
+        ? `<img src="${data.sigResponsable}" style="height:60px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:4px" />`
+        : `<div style="height:60px;border:1px solid #ccc;border-radius:4px;margin-top:4px;background:#fafafa"></div>`;
+      const sigSalHtml = data.sigSalarie
+        ? `<img src="${data.sigSalarie}" style="height:60px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:4px" />`
+        : `<div style="height:60px;border:1px solid #ccc;border-radius:4px;margin-top:4px;background:#fafafa"></div>`;
+      body = `<h1>NOTICE DE POSTE HYPERBARE — 035_QSE_FO</h1>
+        <div class="g2">
+          <div class="f"><b>Chantier :</b><span>${data.chantier||""}</span></div>
+          <div class="f"><b>Date arrivée :</b><span>${data.dateArrivee||""}</span></div>
+          <div class="f"><b>Nom :</b><span>${data.nom||""}</span></div>
+          <div class="f"><b>Prénom :</b><span>${data.prenom||""}</span></div>
+          <div class="f"><b>Poste :</b><span>${data.poste||""}</span></div>
+          <div class="f"><b>Type salarié :</b><span>${data.typeSalarie||""}</span></div>
+          <div class="f"><b>Profondeur max :</b><span>${data.profondeur||""} m</span></div>
+          <div class="f"><b>Type plongée :</b><span>${data.plongeeType||""}</span></div>
+          <div class="f"><b>Support :</b><span>${data.supportType||""}</span></div>
+          <div class="f"><b>Gaz fond :</b><span>${data.gazFond||""}</span></div>
+          <div class="f"><b>Gaz palier :</b><span>${data.gazPalier||""}</span></div>
+        </div>
+        <h2>Signatures</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+          <div>
+            <div style="font-size:10px;font-weight:bold;margin-bottom:2px">Responsable : ${data.respNom||""}</div>
+            <div style="font-size:9px;color:#888;margin-bottom:2px">Date : ${data.dateSign||""}</div>
+            ${sigRespHtml}
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:bold;margin-bottom:2px">Salarié : ${data.salNom||""}</div>
+            <div style="font-size:9px;color:#888;margin-bottom:2px">&nbsp;</div>
+            ${sigSalHtml}
+          </div>
+        </div>
+        <div class="f" style="margin-top:6px"><b>Commentaires :</b><span>${data.commentaires||""}</span></div>`;
+    } else {
+      body = `<h1>ACCUEIL QSE RENFORCÉ — 043_QSE_FO</h1>
+        <div class="g2">
+          <div class="f"><b>Chantier :</b><span>${data.chantier||""}</span></div>
+          <div class="f"><b>Date :</b><span>${data.date||""}</span></div>
+          <div class="f"><b>Nom :</b><span>${data.nom||""}</span></div>
+          <div class="f"><b>Prénom :</b><span>${data.prenom||""}</span></div>
+          <div class="f"><b>Type salarié :</b><span>${data.typeSalarie||""}</span></div>
+          <div class="f"><b>Chef chantier :</b><span>${data.chefNom||""}</span></div>
+          <div class="f"><b>Date accueil :</b><span>${data.dateSign||""}</span></div>
+          <div class="f"><b>Date évaluation :</b><span>${data.dateEval||""}</span></div>
+          <div class="f"><b>Reconduction :</b><span>${data.continuer||""}</span></div>
+        </div>`;
+    }
+
+    const labels = {securite:"Fiche_Securite",notice:"Notice_Poste_Hyperbare",accueil:"Accueil_QSE_Renforce"};
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>${labels[type]}</title><style>${css}</style></head>
+      <body>
+        <div class="logo">
+          <span class="logo-box">BONNA TP</span>
+          <span style="color:#888;font-size:10px">${date}</span>
+        </div>
+        ${body}
+        <div class="note">📱 Sur iPhone : appuyez sur le bouton Partager → Imprimer, ou Enregistrer en PDF</div>
+      </body></html>`;
+
+    dlBlob(html, `${labels[type]}_${data.date||date.replace(/\//g,"-")}.html`, "text/html;charset=utf-8");
+    showToast("✓ Fichier téléchargé — ouvrez-le et utilisez Imprimer pour créer le PDF");
+  };
+
+  const tabs=[{id:"securite",num:"FO-SEC",label:"Fiche Sécurité"},{id:"notice",num:"035_QSE",label:"Notice Poste"},{id:"accueil",num:"043_QSE",label:"Accueil QSE"},{id:"archive",num:"ARCHIVE",label:"Documents"},{id:"penibilite",num:"C2P",label:"Pénibilité"}];
+
+  return (
+    <div style={s.app}>
+      <div style={s.header}>
+        <div style={s.logoRow}>
+          <span style={s.logoBox}>BONNA TP</span>
+          <span style={s.appTitle}>Formulaires Terrain</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={s.appSub}>Gestion sécurité hyperbare</div>
+        <div style={{display:"flex",alignItems:"center",gap:5}}>
+          {syncing ? (
+            <span style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontFamily:"monospace"}}>↻ sync…</span>
+          ) : lastSync ? (
+            <span style={{fontSize:9,color:"rgba(255,255,255,0.4)",fontFamily:"monospace",cursor:"pointer"}} onClick={fetchDocs}>
+              ✓ {lastSync.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      </div>
+
+      <div style={s.tabBar}>
+        {tabs.map(t=>(
+          <button key={t.id} style={s.tabBtn(tab===t.id)} onClick={()=>setTab(t.id)}>
+            <span style={s.tabNum(tab===t.id)}>{t.num}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab==="securite" && <VueSecurite data={securite} setData={setSecurite} onSave={()=>saveDoc("securite",securite)} onExportPDF={()=>genPDF("securite",securite)} />}
+      {tab==="notice" && <VueNotice data={notice} setData={setNotice} onSave={()=>saveDoc("notice",notice)} onExportPDF={()=>genPDF("notice",notice)} />}
+      {tab==="accueil" && <VueAccueil data={accueil} setData={setAccueil} onSave={()=>saveDoc("accueil",accueil)} onExportPDF={()=>genPDF("accueil",accueil)} />}
+      {tab==="archive" && <VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)} />}
+      {tab==="penibilite" && <VuePenibilite docs={docs} />}
+
+      <Toast message={toast} />
+    </div>
+  );
+}
+
+
+// Monter l'app
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App));
+document.getElementById("loading").style.display = "none";
+</script>
+
+</body>
+</html>
