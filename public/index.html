@@ -155,8 +155,14 @@ const emptyAccueil = () => ({
 // ─── STORAGE ─────────────────────────────────────────────────────────────────
 const LS_KEY = "bonna_docs_v2"; // fallback local
 // Lues dynamiquement à chaque appel (chargées via /api/config)
-const getSupabaseUrl = () => window.__ENV__?.SUPABASE_URL || "";
-const getSupabaseKey = () => window.__ENV__?.SUPABASE_KEY || "";
+// Nettoie l'URL pour éviter les doublons de "/rest/v1" et les "/" finaux
+const getSupabaseUrl = () => {
+  let url = window.__ENV__?.SUPABASE_URL || "";
+  url = url.trim().replace(/\/rest\/v1\/?$/i, ""); // retire /rest/v1 ou /rest/v1/ en fin
+  url = url.replace(/\/+$/, ""); // retire les / finaux restants
+  return url;
+};
+const getSupabaseKey = () => (window.__ENV__?.SUPABASE_KEY || "").trim();
 const supabaseReady = () => !!(getSupabaseUrl() && getSupabaseKey());
 
 // ── Supabase helpers ──
