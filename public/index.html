@@ -1518,6 +1518,107 @@ function VuePenibilite({ docs }) {
   );
 }
 
+// ─── VUE CARNET PLONGÉE ──────────────────────────────────────────────────────
+function VueCarnetPlongee({ docs }) {
+  const [openDiver, setOpenDiver] = useState(null);
+
+  // Extraire toutes les plongées individuelles depuis les Fiches de Sécurité
+  const plongees = docs.filter(d=>d.type==="securite").flatMap(fiche=>{
+    const data = fiche.data || {};
+    return (data.operateurs||[]).flatMap(op=>{
+      if (!op.equipe || !op.equipe.trim()) return [];
+      const prof = parseFloat(op.prof);
+      if (isNaN(prof) || prof<=0) return [];
+      return [{
+        nom: op.equipe.trim(),
+        date: data.date || fiche.date || "—",
+        site: data.site || fiche.chantier || "—",
+        prof,
+        duree: op.duree || "",
+        tpsFond: op.tpsFond || "",
+        p12: op.p12 || "", p9: op.p9 || "", p6: op.p6 || "", p3: op.p3 || "",
+        gaz: data.melange || "",
+        methode: data.methode || "",
+      }];
+    });
+  });
+
+  // Regrouper par plongeur
+  const byNom = {};
+  plongees.forEach(p=>{ if(!byNom[p.nom]) byNom[p.nom]=[]; byNom[p.nom].push(p); });
+  const divers = Object.keys(byNom).sort();
+
+  const totalMin = (arr) => arr.reduce((s,p)=>{
+    const d = parseFloat(p.duree);
+    return s + (isNaN(d)?0:d);
+  }, 0);
+
+  const formatPaliers = (p) => {
+    const parts = [];
+    if (p.p12) parts.push(`12m:${p.p12}`);
+    if (p.p9) parts.push(`9m:${p.p9}`);
+    if (p.p6) parts.push(`6m:${p.p6}`);
+    if (p.p3) parts.push(`3m:${p.p3}`);
+    return parts.length ? parts.join(" · ") : "—";
+  };
+
+  return (
+    <div style={s.view}>
+      <div style={s.infoBanner}>
+        <strong>📘 Carnet de plongée individuel</strong><br/>
+        Regroupe automatiquement, pour chaque plongeur, toutes les plongées enregistrées dans les Fiches de Sécurité : date, temps de plongée total, profondeur, paliers et gaz respiré.
+      </div>
+
+      {divers.length===0 ? (
+        <div style={{textAlign:"center",padding:"36px 20px",color:C.gray}}>
+          <div style={{fontSize:36,marginBottom:8}}>📘</div>
+          <p style={{fontSize:13}}>Aucune plongée enregistrée.<br/>Remplissez et sauvegardez des Fiches de Sécurité avec le nom des plongeurs.</p>
+        </div>
+      ) : divers.map(nom=>{
+        const arr = byNom[nom].slice().sort((a,b)=>b.date.localeCompare(a.date));
+        const nb = arr.length;
+        const tMin = totalMin(arr);
+        const profMax = Math.max(...arr.map(p=>p.prof));
+        const open = openDiver===nom;
+        return (
+          <div key={nom} style={{...s.card, marginBottom:10}}>
+            <div onClick={()=>setOpenDiver(open?null:nom)} style={{padding:"12px 14px", cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontWeight:700,fontSize:14}}>🤿 {nom}</div>
+                <div style={{color:C.blueMid,fontSize:13}}>{open?"▾":"▸"}</div>
+              </div>
+              <div style={{display:"flex",gap:14,fontSize:11,color:C.gray,marginTop:5}}>
+                <span><strong style={{color:C.text,fontFamily:"monospace",fontSize:13}}>{nb}</strong> plongée{nb>1?"s":""}</span>
+                <span>Tps total <strong style={{color:C.text,fontFamily:"monospace"}}>{tMin} min</strong></span>
+                <span>Prof. max <strong style={{color:C.text,fontFamily:"monospace"}}>{profMax} m</strong></span>
+              </div>
+            </div>
+            {open && (
+              <div style={{borderTop:`1px solid ${C.grayLight}`, padding:"4px 14px 10px"}}>
+                {arr.map((p,i)=>(
+                  <div key={i} style={{padding:"8px 0", borderBottom: i<arr.length-1?`1px solid ${C.grayLight}`:"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                      <span style={{fontFamily:"monospace",fontSize:11,fontWeight:700,color:C.blue}}>{p.date}</span>
+                      <span style={{background:C.blueLight,color:C.blueMid,fontFamily:"monospace",fontWeight:700,fontSize:11,padding:"2px 8px",borderRadius:5}}>{p.prof} m</span>
+                    </div>
+                    <div style={{fontSize:11,color:C.text,marginBottom:2}}>{p.site}</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:10,fontSize:10,color:C.gray}}>
+                      <span>Tps total : <strong style={{color:C.text}}>{p.duree||"—"} min</strong></span>
+                      <span>Tps fond : <strong style={{color:C.text}}>{p.tpsFond||"—"} min</strong></span>
+                      <span>Gaz : <strong style={{color:C.text}}>{p.gaz||"—"}</strong></span>
+                    </div>
+                    <div style={{fontSize:10,color:C.gray,marginTop:2}}>Paliers : <strong style={{color:C.text,fontFamily:"monospace"}}>{formatPaliers(p)}</strong></div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 function App() {
   // Charger SheetJS
@@ -1845,7 +1946,7 @@ function App() {
     showToast("✓ Fichier téléchargé — ouvrez-le et utilisez Imprimer pour créer le PDF");
   };
 
-  const tabs=[{id:"securite",num:"FO-SEC",label:"Fiche Sécurité"},{id:"notice",num:"035_QSE",label:"Notice Poste"},{id:"accueil",num:"043_QSE",label:"Accueil QSE"},{id:"archive",num:"ARCHIVE",label:"Documents"},{id:"penibilite",num:"C2P",label:"Pénibilité"}];
+  const tabs=[{id:"securite",num:"FO-SEC",label:"Fiche Sécurité"},{id:"notice",num:"035_QSE",label:"Notice Poste"},{id:"accueil",num:"043_QSE",label:"Accueil QSE"},{id:"archive",num:"ARCHIVE",label:"Documents"},{id:"penibilite",num:"C2P",label:"Pénibilité"},{id:"carnet",num:"CARNET",label:"Carnet Plongée"}];
 
   return (
     <div style={s.app}>
@@ -1881,6 +1982,7 @@ function App() {
       {tab==="accueil" && <VueAccueil data={accueil} setData={setAccueil} onSave={()=>saveDoc("accueil",accueil)} onExportPDF={()=>genPDF("accueil",accueil)} />}
       {tab==="archive" && <VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)} />}
       {tab==="penibilite" && <VuePenibilite docs={docs} />}
+      {tab==="carnet" && <VueCarnetPlongee docs={docs} />}
 
       <Toast message={toast} />
     </div>
