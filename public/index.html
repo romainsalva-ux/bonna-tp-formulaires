@@ -122,6 +122,24 @@ const ACCUEIL_EVAL = [
   "Respect des consignes d'hygiène et installations",
 ];
 
+const ETAT_MER_OPTIONS = ["Calme","Ridée","Belle","Peu agitée","Agitée","Forte","Très forte","Grosse","Très grosse","Énorme"];
+const TEMPS_OPTIONS = ["Beau","Mauvais","Bas","Couvert","Sans nuages","Froid","Gris","Humide","Maussade","Chaud","Venteux","Lourd","Orageux","Variable","Incertain"];
+const VENT_OPTIONS = ["0","1","2","3","4","5","6","7","8","9","10","11","12"];
+
+// Calcule le numéro de semaine ISO 8601 à partir d'une date "YYYY-MM-DD"
+function getISOWeek(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getDay() + 6) % 7; // lundi=0 ... dimanche=6
+  target.setDate(target.getDate() - dayNr + 3); // jeudi de cette semaine
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const diff = target - firstThursday;
+  const week = 1 + Math.round(diff / (7 * 24 * 60 * 60 * 1000));
+  return String(week);
+}
+
 const emptyOp = () => ({
   equipe:"", intervalle:"", heureImm:"", prof:"", tpsFond:"",
   p12:"", p9:"", p6:"", p3:"", sortie:"", duree:"",
@@ -257,6 +275,14 @@ function Field({ label, children, style }) {
 }
 function Input({ value, onChange, type="text", placeholder="" }) {
   return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={s.input} />;
+}
+function Select({ value, onChange, options, placeholder="Sélectionner..." }) {
+  return (
+    <select value={value} onChange={e=>onChange(e.target.value)} style={{...s.input, appearance:"none", WebkitAppearance:"none", backgroundImage:"url(\"data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%238a8f9e%27 stroke-width=%272%27><path d=%27M6 9l6 6 6-6%27/></svg>\")", backgroundRepeat:"no-repeat", backgroundPosition:"right 10px center", backgroundSize:"16px", paddingRight:32}}>
+      <option value="">{placeholder}</option>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
 }
 function Textarea({ value, onChange, placeholder="" }) {
   return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={s.textarea} />;
@@ -431,7 +457,7 @@ function VueSecurite({ data, setData, onSave, onExportPDF }) {
       <AIBar form="securite" onFill={applyAI} />
       <SectionCard title="Informations générales">
         <div style={s.row2}>
-          <Field label="Date"><Input type="date" value={data.date} onChange={v=>u("date",v)} /></Field>
+          <Field label="Date"><Input type="date" value={data.date} onChange={v=>setData(p=>({...p,date:v,semaine: v ? getISOWeek(v) : p.semaine}))} /></Field>
           <Field label="Site"><Input value={data.site} onChange={v=>u("site",v)} placeholder="Nom du site" /></Field>
         </div>
         <div style={s.row2}>
@@ -449,17 +475,17 @@ function VueSecurite({ data, setData, onSave, onExportPDF }) {
       </SectionCard>
       <SectionCard title="Conditions environnementales">
         <div style={s.row2}>
-          <Field label="État mer / lac / fleuve"><Input value={data.etatMer} onChange={v=>u("etatMer",v)} /></Field>
+          <Field label="État mer / lac / fleuve"><Select value={data.etatMer} onChange={v=>u("etatMer",v)} options={ETAT_MER_OPTIONS} placeholder="Sélectionner un état de mer..." /></Field>
           <Field label="Altitude (m)"><Input type="number" value={data.altitude} onChange={v=>u("altitude",v)} /></Field>
         </div>
         <div style={s.row3}>
-          <Field label="Vent (Bf)"><Input type="number" value={data.vent} onChange={v=>u("vent",v)} /></Field>
+          <Field label="Vent (Bf)"><Select value={data.vent} onChange={v=>u("vent",v)} options={VENT_OPTIONS} placeholder="Force..." /></Field>
           <Field label="Houle (m)"><Input type="number" value={data.houle} onChange={v=>u("houle",v)} /></Field>
           <Field label="Courant"><Input value={data.courant} onChange={v=>u("courant",v)} placeholder="Nd" /></Field>
         </div>
         <div style={s.row3}>
           <Field label="Visibilité (m)"><Input type="number" value={data.visibilite} onChange={v=>u("visibilite",v)} /></Field>
-          <Field label="Temps"><Input value={data.temps} onChange={v=>u("temps",v)} /></Field>
+          <Field label="Temps"><Select value={data.temps} onChange={v=>u("temps",v)} options={TEMPS_OPTIONS} placeholder="Sélectionner..." /></Field>
           <Field label="T° eau (°C)"><Input type="number" value={data.tempEau} onChange={v=>u("tempEau",v)} /></Field>
         </div>
       </SectionCard>
@@ -1559,10 +1585,14 @@ function App() {
     let body = "";
     if (type === "securite") {
       const ops = (data.operateurs||[]).map((op,i) =>
-        `<tr><td>OP${i+1}</td><td>${op.equipe||""}</td><td>${op.heureImm||""}</td>
+        `<tr><td>OP${i+1}</td><td>${op.equipe||""}</td><td>${op.intervalle||""}</td><td>${op.heureImm||""}</td>
         <td>${op.prof||""}</td><td>${op.tpsFond||""}</td>
         <td>${op.p12||""}</td><td>${op.p9||""}</td><td>${op.p6||""}</td><td>${op.p3||""}</td>
         <td>${op.sortie||""}</td><td>${op.duree||""}</td></tr>`).join("");
+      const pressions = (data.operateurs||[]).map((op,i) =>
+        `<tr><td>OP${i+1}</td><td>${op.airDebut||""}</td><td>${op.airFin||""}</td>
+        <td>${op.auxDebut||""}</td><td>${op.auxFin||""}</td><td>${op.btl||""}</td>
+        <td>${op.aide||""}</td><td>${op.secours||""}</td><td>${op.surv||""}</td><td>${op.coh||""}</td></tr>`).join("");
       body = `<h1>FICHE DE SÉCURITÉ</h1>
         <div class="g2">
           <div class="f"><b>Date :</b><span>${data.date||""}</span></div>
@@ -1573,16 +1603,28 @@ function App() {
           <div class="f"><b>Classe :</b><span>${data.classe||""}</span></div>
           <div class="f"><b>Mélange :</b><span>${data.melange||""}</span></div>
           <div class="f"><b>Support :</b><span>${data.support||""}</span></div>
+        </div>
+        <h2>Conditions environnementales</h2>
+        <div class="g2">
           <div class="f"><b>État mer :</b><span>${data.etatMer||""}</span></div>
-          <div class="f"><b>T° eau :</b><span>${data.tempEau||""} °C</span></div>
+          <div class="f"><b>Altitude :</b><span>${data.altitude||""} m</span></div>
           <div class="f"><b>Vent :</b><span>${data.vent||""} Bf</span></div>
+          <div class="f"><b>Houle :</b><span>${data.houle||""} m</span></div>
+          <div class="f"><b>Courant :</b><span>${data.courant||""}</span></div>
           <div class="f"><b>Visibilité :</b><span>${data.visibilite||""} m</span></div>
+          <div class="f"><b>Temps :</b><span>${data.temps||""}</span></div>
+          <div class="f"><b>T° eau :</b><span>${data.tempEau||""} °C</span></div>
         </div>
         <h2>Équipe — Données de plongée</h2>
-        <table><thead><tr><th>OP</th><th>Équipe</th><th>H.imm.</th><th>Prof.</th>
+        <table><thead><tr><th>OP</th><th>Équipe</th><th>Interv.</th><th>H.imm.</th><th>Prof.</th>
           <th>Tps fond</th><th>12m</th><th>9m</th><th>6m</th><th>3m</th>
           <th>H.sortie</th><th>Durée</th></tr></thead>
           <tbody>${ops}</tbody></table>
+        <h2>Pressions &amp; rôles</h2>
+        <table><thead><tr><th>OP</th><th>Air pr. Début</th><th>Air pr. Fin</th>
+          <th>Air aux. Début</th><th>Air aux. Fin</th><th>Pres. btl.</th>
+          <th>Aide Op.</th><th>Plg. Secours</th><th>Surveillant</th><th>COH</th></tr></thead>
+          <tbody>${pressions}</tbody></table>
         <h2>Observations</h2>
         <div style="border:1px solid #ccc;min-height:40px;padding:6px;font-size:11px">${data.observations||""}</div>`;
     } else if (type === "notice") {
