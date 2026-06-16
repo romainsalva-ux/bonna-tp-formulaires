@@ -1686,7 +1686,10 @@ function App() {
   const [securite, setSecurite] = useState(emptySecurite);
   const [notice, setNotice] = useState(emptyNotice);
   const [accueil, setAccueil] = useState(emptyAccueil);
-  const [docs, setDocs] = useState(loadDocs);
+  const [docs, setDocs] = useState(() => {
+    // Charger immédiatement depuis localStorage au démarrage
+    return loadDocs();
+  });
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(null);
   const [toast, setToast] = useState("");
@@ -1696,18 +1699,42 @@ function App() {
 
   // ── Charger depuis Supabase ──
   const fetchDocs = async () => {
-    if (!supabaseReady()) return;
+    if (!supabaseReady()) {
+      // Pas de Supabase : charger depuis localStorage
+      const local = loadDocs();
+      if (local.length > 0) setDocs(local);
+      return;
+    }
     try {
       setSyncing(true);
       const res = await sbFetch("/documents?order=saved_at.desc&limit=500");
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Supabase KO : utiliser le cache local
+        const local = loadDocs();
+        if (local.length > 0) setDocs(local);
+        return;
+      }
       const rows = await res.json();
-      const parsed = rows.map(r => ({ ...r.payload, id: r.id, savedAt: r.saved_at }));
-      setDocs(parsed);
-      saveDocs(parsed); // cache local
+      if (!Array.isArray(rows)) {
+        const local = loadDocs();
+        if (local.length > 0) setDocs(local);
+        return;
+      }
+      // Fusionner : Supabase + localStorage (pour docs pas encore sync)
+      const remote = rows.map(r => ({ ...(r.payload||r), id: r.id, savedAt: r.saved_at }));
+      const local = loadDocs();
+      // Ajouter les docs locaux qui ne sont pas dans Supabase
+      const remoteIds = new Set(remote.map(d => String(d.id)));
+      const localOnly = local.filter(d => !remoteIds.has(String(d.id)));
+      const merged = [...remote, ...localOnly];
+      setDocs(merged);
+      saveDocs(merged);
       setLastSync(new Date());
     } catch(e) {
       console.error("Sync error:", e);
+      // En cas d'erreur réseau : afficher le cache local
+      const local = loadDocs();
+      if (local.length > 0) setDocs(local);
     } finally {
       setSyncing(false);
     }
