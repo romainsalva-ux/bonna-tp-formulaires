@@ -35,9 +35,9 @@
 <div id="root"></div>
 
 <!-- React + Babel CDN -->
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
@@ -54,6 +54,8 @@ window.__ENV_PROMISE__ = fetch("/api/config")
 </script>
 
 <script type="text/babel" data-presets="react">
+
+
 // React hooks via CDN
 const { useState, useEffect, useCallback, useRef } = React;
 
@@ -195,12 +197,12 @@ const LS_KEY = "bonna_docs_v2"; // fallback local
 // Lues dynamiquement à chaque appel (chargées via /api/config)
 // Nettoie l'URL pour éviter les doublons de "/rest/v1" et les "/" finaux
 const getSupabaseUrl = () => {
-  let url = window.__ENV__?.SUPABASE_URL || "";
+  let url = (window.__ENV__ && window.__ENV__.SUPABASE_URL) || "";
   url = url.trim().replace(/\/rest\/v1\/?$/i, ""); // retire /rest/v1 ou /rest/v1/ en fin
   url = url.replace(/\/+$/, ""); // retire les / finaux restants
   return url;
 };
-const getSupabaseKey = () => (window.__ENV__?.SUPABASE_KEY || "").trim();
+const getSupabaseKey = () => ((window.__ENV__ && window.__ENV__.SUPABASE_KEY) || "").trim();
 const supabaseReady = () => !!(getSupabaseUrl() && getSupabaseKey());
 
 // ── Supabase helpers ──
@@ -288,6 +290,9 @@ const s = {
   penibTfoot: { background:C.blue },
   penibTfootTd: { color:"#fff", fontWeight:700, fontSize:11, padding:"7px", border:`1px solid ${C.blueMid}` },
 };
+
+
+
 
 // ─── COMPOSANTS UTILITAIRES ──────────────────────────────────────────────────
 function Field({ label, children, style }) {
@@ -381,7 +386,7 @@ Texte: "${text}"`
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Erreur HTTP " + res.status);
+        throw new Error((err && err.error) || "Erreur HTTP " + res.status);
       }
       const data = await res.json();
       const raw = (data.text || "{}").replace(/```json|```/g, "").trim();
@@ -454,6 +459,9 @@ function OpTable({ ops, onChange }) {
   );
 }
 
+
+
+
 // ─── VUE FICHE SÉCURITÉ ───────────────────────────────────────────────────────
 function VueSecurite({ data, setData, onSave, onUpdate, onExportPDF, editingDocId, onClear }) {
   const u = (k,v) => setData(p=>({...p,[k]:v}));
@@ -466,7 +474,7 @@ function VueSecurite({ data, setData, onSave, onUpdate, onExportPDF, editingDocI
     if (d.houle) u("houle",d.houle); if (d.courant) u("courant",d.courant);
     if (d.visibilite) u("visibilite",d.visibilite); if (d.temps) u("temps",d.temps);
     if (d.tempEau) u("tempEau",d.tempEau); if (d.observations) u("observations",d.observations);
-    if (d.operateurs?.length) {
+    if ((d.operateurs && d.operateurs.length)) {
       const ops = [...data.operateurs];
       d.operateurs.forEach((op,i)=>{ if(i<5){ if(op.nom) ops[i]={...ops[i],equipe:op.nom}; if(op.heureImmersion) ops[i]={...ops[i],heureImm:op.heureImmersion}; if(op.prof) ops[i]={...ops[i],prof:op.prof}; if(op.tpsFond) ops[i]={...ops[i],tpsFond:op.tpsFond}; }});
       u("operateurs",ops);
@@ -961,6 +969,10 @@ function VueAccueil({ data, setData, onSave, onUpdate, onExportPDF, editingDocId
   );
 }
 
+
+
+
+
 // ─── VUE ARCHIVE ─────────────────────────────────────────────────────────────
 function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
   const [view, setView] = useState("chantiers"); // "chantiers" | "tous"
@@ -1324,6 +1336,9 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
   );
 }
 
+
+
+
 // ─── VUE PÉNIBILITÉ ──────────────────────────────────────────────────────────
 function VuePenibilite({ docs }) {
   const [expanded, setExpanded] = useState({});
@@ -1395,9 +1410,9 @@ function VuePenibilite({ docs }) {
     const pm = (plongees.reduce((s,p)=>s+p.profondeur,0)/plongees.length).toFixed(1);
     const rows = plongees.map((p,i) =>
       `<tr><td>${i+1}</td><td><b>${p.nom}</b></td><td>${p.date}</td><td>${p.site}</td>
-      <td style="text-align:center;${p.profondeur>20?"color:#e85d1a;font-weight:bold":""}">${p.profondeur}</td>
-      <td style="text-align:center">${p.tpsFond||"—"}</td><td style="text-align:center">${p.duree||"—"}</td>
-      <td>${p.methode||"—"}</td></tr>`).join("");
+      <td style="text-align:center" ${p.profondeur>20 ? 'class="alerte"' : ""}>${p.profondeur}</td>
+      <td style="text-align:center">${p.tpsFond||"\u2014"}</td><td style="text-align:center">${p.duree||"\u2014"}</td>
+      <td>${p.methode||"\u2014"}</td></tr>`).join("");
     const synthRows = Object.entries(byNom).map(([n,a]) => {
       const nb=a.length, p2=(a.reduce((s,x)=>s+x.profondeur,0)/nb).toFixed(1), tt=a.reduce((s,x)=>s+(x.tpsFond||0),0);
       const st=nb>=60?"⚠ SEUIL ATTEINT":nb>=48?"→ Proche":"✓ OK";
@@ -1406,26 +1421,9 @@ function VuePenibilite({ docs }) {
         <td style="text-align:center">${p2}</td><td style="text-align:center">${tt}</td>
         <td style="text-align:center">60</td><td class="${cls}">${st}</td></tr>`;
     }).join("");
+    const cssPenib = 'body{font-family:Arial,sans-serif;font-size:11px;padding:15px;margin:0}\n      h1{font-size:14px;color:#1a3a6e;border-bottom:3px solid #1a3a6e;padding-bottom:5px}\n      h2{font-size:11px;background:#1a3a6e;color:#fff;padding:5px 9px;margin:12px 0 5px}\n      .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:9px 0}\n      .stat{border:2px solid #2356a8;border-radius:5px;padding:7px;text-align:center}\n      .sv{font-size:18px;font-weight:bold;color:#e85d1a}.sl{font-size:9px;color:#666;text-transform:uppercase}\n      table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:10px}\n      th{background:#2356a8;color:#fff;padding:4px 6px;text-align:left;border:1px solid #ccc}\n      td{border:1px solid #ccc;padding:4px 6px}tr:nth-child(even)td{background:#f4f5f7}\n      .ok{color:#1a7a4a}.warn{color:#e85d1a}.alert{color:#c0392b;font-weight:bold}\n      .tr-tot td{background:#1a3a6e!important;color:#fff!important;font-weight:bold!important}\n      .info{background:#e8eef8;border-left:3px solid #2356a8;padding:7px 9px;font-size:9px;margin-top:10px}\n      .note{background:#fff3e8;border-left:3px solid #e85d1a;padding:6px 9px;font-size:10px;margin-top:8px}\n      .page-break{page-break-before:always}\n      .part-sub{font-size:10px;font-weight:bold;color:#1a3a6e;margin:8px 0 4px}\n      .chk-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-bottom:6px}\n      .chk{font-size:9px;line-height:1.4}\n      .risk-illustration{width:100%;display:block;border:1px solid #ccc;border-radius:4px;margin:6px 0 10px}\n      ';
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pénibilité BONNA TP</title>
-      <style>body{font-family:Arial,sans-serif;font-size:11px;padding:15px;margin:0}
-      h1{font-size:14px;color:#1a3a6e;border-bottom:3px solid #1a3a6e;padding-bottom:5px}
-      h2{font-size:11px;background:#1a3a6e;color:#fff;padding:5px 9px;margin:12px 0 5px}
-      .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:9px 0}
-      .stat{border:2px solid #2356a8;border-radius:5px;padding:7px;text-align:center}
-      .sv{font-size:18px;font-weight:bold;color:#e85d1a}.sl{font-size:9px;color:#666;text-transform:uppercase}
-      table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:10px}
-      th{background:#2356a8;color:#fff;padding:4px 6px;text-align:left;border:1px solid #ccc}
-      td{border:1px solid #ccc;padding:4px 6px}tr:nth-child(even)td{background:#f4f5f7}
-      .ok{color:#1a7a4a}.warn{color:#e85d1a}.alert{color:#c0392b;font-weight:bold}
-      .tr-tot td{background:#1a3a6e!important;color:#fff!important;font-weight:bold!important}
-      .info{background:#e8eef8;border-left:3px solid #2356a8;padding:7px 9px;font-size:9px;margin-top:10px}
-      .note{background:#fff3e8;border-left:3px solid #e85d1a;padding:6px 9px;font-size:10px;margin-top:8px}
-      .page-break{page-break-before:always}
-      .part-sub{font-size:10px;font-weight:bold;color:#1a3a6e;margin:8px 0 4px}
-      .chk-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-bottom:6px}
-      .chk{font-size:9px;line-height:1.4}
-      .risk-illustration{width:100%;display:block;border:1px solid #ccc;border-radius:4px;margin:6px 0 10px}
-      </style></head><body>
+      <style>${cssPenib}</style></head><body>
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
         <div style="background:#e85d1a;color:#fff;font-weight:bold;padding:3px 9px;font-size:12px">BONNA TP</div>
         <span style="color:#888;font-size:10px">${date}</span>
@@ -1669,6 +1667,9 @@ function VueCarnetPlongee({ docs }) {
     </div>
   );
 }
+
+
+
 
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 function App() {
@@ -2088,10 +2089,19 @@ function App() {
 
 // Monter l'app — attendre que la config Supabase soit chargée
 window.__ENV_PROMISE__.then(() => {
-  const root = ReactDOM.createRoot(document.getElementById("root"));
-  root.render(React.createElement(App));
-  document.getElementById("loading").style.display = "none";
+  try {
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(React.createElement(App));
+    const loader = document.getElementById("loading");
+    if (loader) loader.style.display = "none";
+  } catch(e) {
+    document.getElementById("loading").innerHTML = '<div style="padding:20px;color:#fff;font-family:monospace;font-size:12px"><b>Erreur:</b><br>' + e.message + '<br><br>' + (e.stack||'').replace(/\n/g,'<br>') + '</div>';
+    console.error("App mount error:", e);
+  }
 });
+
+
+
 </script>
 
 </body>
