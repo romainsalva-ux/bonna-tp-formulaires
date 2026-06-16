@@ -207,21 +207,23 @@ const supabaseReady = () => !!(getSupabaseUrl() && getSupabaseKey());
 
 // ── Supabase helpers ──
 const sbFetch = (path, opts={}) => {
+  const method = (opts.method || "GET").toUpperCase();
   const headers = {
     "apikey": getSupabaseKey(),
     "Authorization": "Bearer " + getSupabaseKey(),
-    "Content-Type": "application/json",
   };
-  // Ajouter Prefer seulement si explicitement passé ou pour GET/POST
-  const method = (opts.method || "GET").toUpperCase();
+  // Content-Type seulement si on envoie un body
+  if (opts.body) headers["Content-Type"] = "application/json";
+  // Prefer seulement pour GET/POST avec return
   if (opts.prefer) {
     headers["Prefer"] = opts.prefer;
-  } else if (method === "GET" || method === "POST") {
+  } else if (method === "GET") {
     headers["Prefer"] = "return=representation";
   }
   return fetch(getSupabaseUrl() + "/rest/v1" + path, {
-    ...opts,
-    headers: { ...headers, ...(opts.headers||{}) }
+    method,
+    headers: { ...headers, ...(opts.headers||{}) },
+    body: opts.body || undefined,
   });
 };
 
@@ -1500,10 +1502,28 @@ function App() {
   };
 
   const deleteDoc=async(id)=>{
-    const u=docs.filter(d=>String(d.id)!==String(id));saveDocs(u);setDocs(u);showToast("Document supprimé");
+    // 1. Suppression locale immédiate
+    const u=docs.filter(d=>String(d.id)!==String(id));
+    saveDocs(u); setDocs(u);
+    // 2. Suppression sur Supabase (propagation aux autres appareils)
     if(supabaseReady()){
-      try{await sbFetch("/documents?id=eq."+id,{method:"DELETE"});setTimeout(fetchDocs,500);}
-      catch(e){console.error("Delete:",e);}
+      try{
+        const res=await sbFetch("/documents?id=eq."+id,{method:"DELETE"});
+        if(res.ok){
+          showToast("✓ Document supprimé et synchronisé");
+          // Forcer un rechargement après 1s pour confirmer la suppression
+          setTimeout(fetchDocs,1000);
+        } else {
+          const err=await res.json().catch(()=>({}));
+          console.error("Supabase DELETE erreur:",res.status,err);
+          showToast("⚠ Supprimé localement — erreur sync: "+res.status);
+        }
+      }catch(e){
+        console.error("Delete error:",e);
+        showToast("⚠ Supprimé localement — hors ligne");
+      }
+    } else {
+      showToast("✓ Document supprimé");
     }
   };
 
