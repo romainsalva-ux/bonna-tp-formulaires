@@ -983,481 +983,262 @@ function VueAccueil({ data, setData, onSave, onUpdate, onExportPDF, editingDocId
 
 // ─── VUE ARCHIVE ─────────────────────────────────────────────────────────────
 function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
-  const [view, setView] = useState("chantiers"); // "chantiers" | "tous"
-  const [chantierOuvert, setChantierOuvert] = useState(null); //
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id du doc à supprimer
-  const [confirmDeleteChantier, setConfirmDeleteChantier] = useState(null); // nom du dossier à supprimer nom du chantier ouvert
+  const [view, setView] = useState("chantiers");
+  const [chantierOuvert, setChantierOuvert] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmDeleteChantier, setConfirmDeleteChantier] = useState(null);
   const [filter, setFilter] = useState("tous");
   const [sortAsc, setSortAsc] = useState(false);
   const [showNewChantier, setShowNewChantier] = useState(false);
   const [newChantierNom, setNewChantierNom] = useState("");
-  const [showMoveModal, setShowMoveModal] = useState(null); // doc à déplacer
+  const [showMoveModal, setShowMoveModal] = useState(null);
   const [chantiers, setChantiers] = useState(() => {
     try { return JSON.parse(localStorage.getItem("bonna_chantiers") || "[]"); } catch { return []; }
   });
 
-  // Charger les chantiers depuis Supabase + polling
-  useEffect(() => {
-    const fetchChantiers = () => {
-      if (!supabaseReady()) return;
-      sbFetch("/chantiers?order=nom.asc&limit=200")
-        .then(r => r.ok ? r.json() : [])
-        .then(rows => {
-          if (Array.isArray(rows) && rows.length > 0) {
-            const noms = rows.map(r => r.nom).filter(Boolean);
-            setChantiers(prev => {
-              const merged = [...new Set([...prev, ...noms])];
-              localStorage.setItem("bonna_chantiers", JSON.stringify(merged));
-              return merged;
-            });
-          }
-        }).catch(()=>{});
-    };
-    fetchChantiers();
-    const iv = setInterval(fetchChantiers, 30000);
-    return () => clearInterval(iv);
-  }, []);
-
-  const [tab, setTab] = useState("securite");
-  const [securite, setSecurite] = useState(emptySecurite);
-  const [notice, setNotice] = useState(emptyNotice);
-  const [accueil, setAccueil] = useState(emptyAccueil);
-  const [docs, setDocs] = useState(() => {
-    // Charger immédiatement depuis localStorage au démarrage
-    return loadDocs();
-  });
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
-  const [toast, setToast] = useState("");
-  const [editingDocId, setEditingDocId] = useState(null); // id du doc en cours d'édition
-
-  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
-
-  // ── Charger depuis Supabase ──
-  const fetchDocs = async () => {
-    if (!supabaseReady()) {
-      const local = loadDocs();
-      if (local.length > 0) setDocs(local);
-      return;
-    }
-    try {
-      setSyncing(true);
-      const res = await sbFetch("/documents?order=saved_at.desc&limit=500&select=*");
-      if (!res.ok) {
-        console.warn("Supabase fetch error:", res.status);
-        const local = loadDocs();
-        if (local.length > 0) setDocs(local);
-        return;
-      }
-      const rows = await res.json();
-      if (!Array.isArray(rows)) {
-        console.warn("Supabase returned non-array:", rows);
-        const local = loadDocs();
-        if (local.length > 0) setDocs(local);
-        return;
-      }
-      // Construire la liste depuis Supabase
-      const remote = rows
-        .filter(r => r && (r.payload || r.type))
-        .map(r => {
-          const base = r.payload || r;
-          return { ...base, id: r.id || base.id, savedAt: r.saved_at || base.savedAt };
-        });
-      // Garder les docs locaux en attente de sync (sauvegardés offline)
-      const local = loadDocs();
-      const remoteIds = new Set(remote.map(d => String(d.id)));
-      const localOnly = local.filter(d => !remoteIds.has(String(d.id)));
-      const merged = [...remote, ...localOnly];
-      setDocs(merged);
-      saveDocs(merged);
-      setLastSync(new Date());
-    } catch(e) {
-      console.error("Sync error:", e);
-      const local = loadDocs();
-      if (local.length > 0) setDocs(local);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // Charger au démarrage + polling toutes les 8 secondes
-  useEffect(() => {
-    fetchDocs();
-    const interval = setInterval(fetchDocs, 8000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const showToast2 = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
-
-  const saveDoc = async (type, data) => {
-    const labels={securite:"Fiche Sécurité",notice:"Notice Poste Hyperbare",accueil:"Accueil QSE Renforcé"};
-    const newDoc = {
-      id: Date.now(),
-      type, label: labels[type],
-      chantier: data.site||data.chantier||"—",
-      date: data.date||data.dateArrivee||new Date().toISOString().slice(0,10),
-      nom: data.nom ? `${data.nom} ${data.prenom||""}`.trim() : "",
-      data,
-      savedAt: new Date().toISOString()
-    };
-
-    // Sauvegarder dans Supabase
+  const saveChantiers = async (list) => {
+    setChantiers(list);
+    localStorage.setItem("bonna_chantiers", JSON.stringify(list));
     if (supabaseReady()) {
       try {
-        await sbFetch("/documents", {
-          method: "POST",
-          prefer: "return=minimal",
-          body: JSON.stringify({
-            id: newDoc.id,
-            type: newDoc.type,
-            chantier: newDoc.chantier,
-            date: newDoc.date,
-            nom: newDoc.nom,
-            saved_at: newDoc.savedAt,
-            payload: newDoc
-          })
-        });
-        await fetchDocs(); // recharger pour tous
-        showToast("✓ Document sauvegardé et synchronisé");
-      } catch(e) {
-        console.error("Supabase save error:", e);
-        // Fallback local
-        const updated=[...docs,newDoc];
-        saveDocs(updated); setDocs(updated);
-        showToast("✓ Sauvegardé localement");
-      }
-    } else {
-      const updated=[...docs,newDoc];
-      saveDocs(updated); setDocs(updated);
-      showToast("✓ Document sauvegardé");
-    }
-  };
-
-  const updateDoc = async (type, data) => {
-    if (!editingDocId) return;
-    const labels={securite:"Fiche Sécurité",notice:"Notice Poste Hyperbare",accueil:"Accueil QSE Renforcé"};
-    const updatedDoc = {
-      id: editingDocId,
-      type, label: labels[type],
-      chantier: data.site||data.chantier||"—",
-      date: data.date||data.dateArrivee||new Date().toISOString().slice(0,10),
-      nom: data.nom ? `${data.nom} ${data.prenom||""}`.trim() : "",
-      data,
-      savedAt: new Date().toISOString()
-    };
-    if (supabaseReady()) {
-      try {
-        await sbFetch(`/documents?id=eq.${editingDocId}`, {
-          method: "PATCH",
-          prefer: "return=minimal",
-          body: JSON.stringify({
-            chantier: updatedDoc.chantier,
-            date: updatedDoc.date,
-            nom: updatedDoc.nom,
-            saved_at: updatedDoc.savedAt,
-            payload: updatedDoc
-          })
-        });
-        await fetchDocs();
-        showToast("✓ Document modifié et synchronisé");
-      } catch(e) {
-        const updated = docs.map(d => d.id===editingDocId ? updatedDoc : d);
-        saveDocs(updated); setDocs(updated);
-        showToast("✓ Document modifié");
-      }
-    } else {
-      const updated = docs.map(d => d.id===editingDocId ? updatedDoc : d);
-      saveDocs(updated); setDocs(updated);
-      showToast("✓ Document modifié");
-    }
-    setEditingDocId(null);
-  };
-
-  const deleteDoc = async (id) => {
-    // Supprimer localement immédiatement (feedback instantané)
-    const updated = docs.filter(d => String(d.id) !== String(id));
-    saveDocs(updated);
-    setDocs(updated);
-    showToast("Document supprimé");
-    // Puis supprimer sur Supabase en arrière-plan
-    if (supabaseReady()) {
-      try {
-        const res = await sbFetch("/documents?id=eq." + id, { method: "DELETE" });
-        if (!res.ok) {
-          const err = await res.json().catch(()=>({}));
-          console.error("Supabase DELETE error:", res.status, err);
+        await sbFetch("/chantiers?nom=neq.___", { method: "DELETE", prefer: "return=minimal" });
+        if (list.length > 0) {
+          await sbFetch("/chantiers", { method: "POST", prefer: "return=minimal", body: JSON.stringify(list.map(nom => ({ nom }))) });
         }
-        // Resync pour les autres appareils
-        setTimeout(fetchDocs, 500);
-      } catch(e) {
-        console.error("Delete error:", e);
-      }
+      } catch(e) { console.error("Sync chantiers:", e); }
     }
   };
 
-  const editDoc = (doc) => {
-    if(doc.type==="securite") setSecurite({...emptySecurite(),...doc.data,operateurs:(doc.data.operateurs||[]).map(op=>({...emptyOp(),...op}))});
-    if(doc.type==="notice") setNotice({...emptyNotice(),...doc.data});
-    if(doc.type==="accueil") setAccueil({...emptyAccueil(),...doc.data});
-    setEditingDocId(doc.id);
-    setTab(doc.type);
-    showToast("Formulaire chargé — modifiez puis resauvegardez");
+  const creerChantier = () => {
+    const nom = newChantierNom.trim();
+    if (!nom || chantiers.includes(nom)) return;
+    saveChantiers([...chantiers, nom]);
+    setNewChantierNom(""); setShowNewChantier(false);
   };
 
-  // ── télécharge un blob HTML → ouvrir dans Safari → Partager → Imprimer
-  const dlBlob = (content, filename, mime) => {
-    const blob = new Blob([content], { type: mime });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  supprimerChantier = (nom) => {
+    saveChantiers(chantiers.filter(c => c !== nom));
+    if (chantierOuvert === nom) setChantierOuvert(null);
   };
 
-  const genPDF = async (type, data) => {
-    const date = new Date().toLocaleDateString("fr-FR");
-    const css = `body{font-family:Arial,sans-serif;font-size:11px;padding:15px;margin:0}
-      h1{font-size:14px;text-align:center;border-bottom:2px solid #1a3a6e;padding-bottom:5px;color:#1a3a6e;margin-bottom:8px}
-      h2{font-size:11px;background:#1a3a6e;color:#fff;padding:5px 9px;margin:10px 0 5px}
-      table{width:100%;border-collapse:collapse;margin-bottom:9px}
-      th{background:#e8eef8;font-size:9px;padding:4px 6px;border:1px solid #ccc;text-align:left}
-      td{border:1px solid #ccc;padding:4px 6px;font-size:10px}
-      .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-      .f{display:flex;margin-bottom:4px;gap:6px;font-size:11px}
-      .f b{min-width:130px;flex-shrink:0}
-      .f span{border-bottom:1px solid #bbb;flex:1;padding-left:3px}
-      .logo{display:flex;align-items:center;gap:9px;margin-bottom:8px}
-      .logo-box{background:#e85d1a;color:#fff;font-weight:bold;padding:3px 9px;font-size:12px}
-      .note{background:#e8eef8;border-left:3px solid #2356a8;padding:6px 9px;font-size:10px;margin-top:8px;font-style:italic}
-      @media print{@page{margin:10mm}}`;
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const docsChantier = (nom) => docs.filter(d => norm(d.chantier) === norm(nom));
+  const docsSansChantier = docs.filter(d => !chantiers.some(c => norm(c) === norm(d.chantier)));
 
-    let body = "";
-    if (type === "securite") {
-      const ops = (data.operateurs||[]).map((op,i) =>
-        `<tr><td>OP${i+1}</td><td>${op.equipe||""}</td><td>${op.intervalle||""}</td><td>${op.heureImm||""}</td>
-        <td>${op.prof||""}</td><td>${op.tpsFond||""}</td>
-        <td>${op.p12||""}</td><td>${op.p9||""}</td><td>${op.p6||""}</td><td>${op.p3||""}</td>
-        <td>${op.sortie||""}</td><td>${op.duree||""}</td></tr>`).join("");
-      const pressions = (data.operateurs||[]).map((op,i) =>
-        `<tr><td>OP${i+1}</td><td>${op.airDebut||""}</td><td>${op.airFin||""}</td>
-        <td>${op.auxDebut||""}</td><td>${op.auxFin||""}</td><td>${op.btl||""}</td>
-        <td>${op.aide||""}</td><td>${op.secours||""}</td><td>${op.surv||""}</td><td>${op.coh||""}</td></tr>`).join("");
-      body = `<h1>FICHE DE SÉCURITÉ</h1>
-        <div class="g2">
-          <div class="f"><b>Date :</b><span>${data.date||""}</span></div>
-          <div class="f"><b>Site :</b><span>${data.site||""}</span></div>
-          <div class="f"><b>Semaine N° :</b><span>${data.semaine||""}</span></div>
-          <div class="f"><b>Plongée N° :</b><span>${data.plongeeNum||""}</span></div>
-          <div class="f"><b>Méthode :</b><span>${data.methode||""}</span></div>
-          <div class="f"><b>Classe :</b><span>${data.classe||""}</span></div>
-          <div class="f"><b>Mélange :</b><span>${data.melange||""}</span></div>
-          <div class="f"><b>Support :</b><span>${data.support||""}</span></div>
-        </div>
-        <h2>Conditions environnementales</h2>
-        <div class="g2">
-          <div class="f"><b>État mer :</b><span>${data.etatMer||""}</span></div>
-          <div class="f"><b>Altitude :</b><span>${data.altitude||""} m</span></div>
-          <div class="f"><b>Vent :</b><span>${data.vent||""} Bf</span></div>
-          <div class="f"><b>Houle :</b><span>${data.houle||""} m</span></div>
-          <div class="f"><b>Courant :</b><span>${data.courant||""}</span></div>
-          <div class="f"><b>Visibilité :</b><span>${data.visibilite||""} m</span></div>
-          <div class="f"><b>Temps :</b><span>${data.temps||""}</span></div>
-          <div class="f"><b>T° eau :</b><span>${data.tempEau||""} °C</span></div>
-        </div>
-        <h2>Équipe — Données de plongée</h2>
-        <table><thead><tr><th>OP</th><th>Équipe</th><th>Interv.</th><th>H.imm.</th><th>Prof.</th>
-          <th>Tps fond</th><th>12m</th><th>9m</th><th>6m</th><th>3m</th>
-          <th>H.sortie</th><th>Durée</th></tr></thead>
-          <tbody>${ops}</tbody></table>
-        <h2>Pressions &amp; rôles</h2>
-        <table><thead><tr><th>OP</th><th>Air pr. Début</th><th>Air pr. Fin</th>
-          <th>Air aux. Début</th><th>Air aux. Fin</th><th>Pres. btl.</th>
-          <th>Aide Op.</th><th>Plg. Secours</th><th>Surveillant</th><th>COH</th></tr></thead>
-          <tbody>${pressions}</tbody></table>
-        <h2>Observations</h2>
-        <div style="border:1px solid #ccc;min-height:40px;padding:6px;font-size:11px">${data.observations||""}</div>`;
-    } else if (type === "notice") {
-      const sigRespHtml = data.sigResponsable
-        ? `<img src="${data.sigResponsable}" style="height:60px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:4px" />`
-        : `<div style="height:60px;border:1px solid #ccc;border-radius:4px;margin-top:4px;background:#fafafa"></div>`;
-      const sigSalHtml = data.sigSalarie
-        ? `<img src="${data.sigSalarie}" style="height:60px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:4px" />`
-        : `<div style="height:60px;border:1px solid #ccc;border-radius:4px;margin-top:4px;background:#fafafa"></div>`;
-      body = `<h1>NOTICE DE POSTE HYPERBARE — 035_QSE_FO</h1>
-        <div class="g2">
-          <div class="f"><b>Chantier :</b><span>${data.chantier||""}</span></div>
-          <div class="f"><b>Date arrivée :</b><span>${data.dateArrivee||""}</span></div>
-          <div class="f"><b>Nom :</b><span>${data.nom||""}</span></div>
-          <div class="f"><b>Prénom :</b><span>${data.prenom||""}</span></div>
-          <div class="f"><b>Poste :</b><span>${data.poste||""}</span></div>
-          <div class="f"><b>Type salarié :</b><span>${data.typeSalarie||""}</span></div>
-          <div class="f"><b>Profondeur max :</b><span>${data.profondeur||""} m</span></div>
-          <div class="f"><b>Type plongée :</b><span>${data.plongeeType||""}</span></div>
-          <div class="f"><b>Support :</b><span>${data.supportType||""}</span></div>
-          <div class="f"><b>Gaz fond :</b><span>${data.gazFond||""}</span></div>
-          <div class="f"><b>Gaz palier :</b><span>${data.gazPalier||""}</span></div>
-        </div>
-        <h2>Signatures</h2>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-          <div>
-            <div style="font-size:10px;font-weight:bold;margin-bottom:2px">Responsable : ${data.respNom||""}</div>
-            <div style="font-size:9px;color:#888;margin-bottom:2px">Date : ${data.dateSign||""}</div>
-            ${sigRespHtml}
-          </div>
-          <div>
-            <div style="font-size:10px;font-weight:bold;margin-bottom:2px">Salarié : ${data.salNom||""}</div>
-            <div style="font-size:9px;color:#888;margin-bottom:2px">&nbsp;</div>
-            ${sigSalHtml}
-          </div>
-        </div>
-        <div class="f" style="margin-top:6px"><b>Commentaires :</b><span>${data.commentaires||""}</span></div>`;
+  const deplacerDoc = async (docId, nomChantier) => {
+    if (supabaseReady()) {
+      try {
+        const res = await sbFetch("/documents?id=eq." + docId);
+        const rows = await res.json();
+        if (rows.length > 0) {
+          const updatedPayload = { ...rows[0].payload, chantier: nomChantier };
+          await sbFetch("/documents?id=eq." + docId, { method: "PATCH", prefer: "return=minimal", body: JSON.stringify({ chantier: nomChantier, payload: updatedPayload }) });
+        }
+      } catch(e) { console.error(e); }
     } else {
-      // ── Accueil QSE Renforcé (043_QSE_FO) — fidèle au formulaire officiel ──
-      // Charger les images en base64 pour le PDF
-      const viergeURI = await loadImageAsDataURI(RISQUE_IMG_VIERGE);
-      const correctionURI = await loadImageAsDataURI(RISQUE_IMG_CORRECTION);
-      const sigChefAccHtml = data.sigChefAccueil
-        ? `<img src="${data.sigChefAccueil}" style="height:50px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:3px"/>`
-        : `<div style="height:50px;border:1px solid #ccc;border-radius:4px;margin-top:3px;background:#fafafa"></div>`;
-      const sigSalAccHtml = data.sigSalarieAccueil
-        ? `<img src="${data.sigSalarieAccueil}" style="height:50px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:3px"/>`
-        : `<div style="height:50px;border:1px solid #ccc;border-radius:4px;margin-top:3px;background:#fafafa"></div>`;
-      const sigChefEvalHtml = data.sigChefEval
-        ? `<img src="${data.sigChefEval}" style="height:50px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:3px"/>`
-        : `<div style="height:50px;border:1px solid #ccc;border-radius:4px;margin-top:3px;background:#fafafa"></div>`;
-      const sigSalEvalHtml = data.sigSalarieEval
-        ? `<img src="${data.sigSalarieEval}" style="height:50px;display:block;border:1px solid #ccc;border-radius:4px;margin-top:3px"/>`
-        : `<div style="height:50px;border:1px solid #ccc;border-radius:4px;margin-top:3px;background:#fafafa"></div>`;
-
-      const typeSalarieHtml = ["Salarié en CDD","Salarié Intérimaire","Salarié Nouvel embauché (< 1 an)","Retour après arrêt de travail > 3 mois"]
-        .map(opt => `<div class="chk">${data.typeSalarie===opt ? "☑" : "☐"} ${opt}</div>`).join("");
-
-      const risquesHtml = ACCUEIL_RISQUES.map((l,i) => `<div class="chk">${data.risques && data.risques[i] ? "☑" : "☐"} ${l}</div>`).join("");
-      const engagementsHtml = ACCUEIL_ENG.map((l,i) => `<div class="chk">${data.engagements && data.engagements[i] ? "☑" : "☐"} ${l}</div>`).join("");
-
-      const evalRows = ACCUEIL_EVAL.map((l,i) => {
-        const v = (data.evaluation && data.evaluation[i]) || "";
-        const cell = (val) => v===val ? "●" : "○";
-        return `<tr><td>${l}</td><td style="text-align:center">${cell("mauvais")}</td><td style="text-align:center">${cell("moyen")}</td><td style="text-align:center">${cell("bon")}</td><td style="text-align:center">${cell("tres_bon")}</td></tr>`;
-      }).join("");
-
-      body = `<h1>043_QSE_FO — ACCUEIL QSE RENFORCÉ — Page 1/2</h1>
-        <div class="g2" style="margin-bottom:6px">
-          <div>
-            <div class="f"><b>Chantier :</b><span>${data.chantier||""}</span></div>
-            <div class="f"><b>Nom :</b><span>${data.nom||""}</span></div>
-            <div class="f"><b>Prénom :</b><span>${data.prenom||""}</span></div>
-          </div>
-          <div class="chk-grid" style="grid-template-columns:1fr">${typeSalarieHtml}</div>
-        </div>
-
-        <div class="note" style="margin-top:0">
-          Cet Accueil Sécurité Renforcé est destiné au personnel ne connaissant pas ou mal nos <b>Risques Métiers</b>.
-          Les risques liés au contexte de travail sont vus dans l'Accueil QSE Terrain (fiche 042_QSE_FO).
-        </div>
-
-        <h2>A. PRÉSENTATION DES RISQUES ET MESURES DE PRÉVENTION</h2>
-        <div class="chk-grid" style="grid-template-columns:1fr">${risquesHtml}</div>
-
-        <img class="risk-illustration" src="${viergeURI}" alt="Risques et mesures de prévention - schéma à compléter"/>
-
-        <div class="part-sub">Risques identifiés et mesures de prévention (observations) :</div>
-        <div style="border:1px solid #ccc;min-height:50px;padding:6px;font-size:10px;white-space:pre-wrap">${data.risquesTexte||""}</div>
-
-        <h2>B. ENGAGEMENTS SANTÉ ET SÉCURITÉ AU TRAVAIL DU SALARIÉ</h2>
-        <div class="chk-grid">${engagementsHtml}</div>
-
-        <table style="margin-top:8px"><thead><tr><th>DATE ACCUEIL</th><th>Nom &amp; Visa du Chef Chantier/Atelier</th><th>Nom &amp; Visa du Salarié</th></tr></thead>
-        <tbody><tr>
-          <td style="text-align:center;font-weight:bold">${data.dateSign||""}</td>
-          <td>${data.chefNom||""}${sigChefAccHtml}</td>
-          <td>${data.salNom||""}${sigSalAccHtml}</td>
-        </tr></tbody></table>
-
-        <div class="page-break"></div>
-
-        <h1>043_QSE_FO — ACCUEIL QSE RENFORCÉ — Page 2/2</h1>
-        <h2>RISQUES ET MESURES DE PRÉVENTION, éléments de correction</h2>
-        <img class="risk-illustration" src="${correctionURI}" alt="Risques et mesures de prévention - correction"/>
-
-        <div class="note">
-          ➔ Découper selon les pointillés, ou scanner, ou photographier, et transmettre la partie évaluation ci-dessous à la correspondante QSE.
-        </div>
-
-        <h2>C. ÉVALUATION APRÈS 1 SEMAINE</h2>
-        <table><thead><tr><th>Critère</th><th>Mauvais</th><th>Moyen</th><th>Bon</th><th>Très bon</th></tr></thead>
-        <tbody>${evalRows}</tbody></table>
-        <div class="f" style="margin-top:6px"><b>➔ Souhaitez-vous continuer / reprendre cette personne :</b><span>${data.continuer||""}</span></div>
-
-        <table style="margin-top:8px"><thead><tr><th>DATE EVALUATION</th><th>Nom &amp; Visa du Chef Chantier</th><th>Nom &amp; Visa du Salarié</th></tr></thead>
-        <tbody><tr>
-          <td style="text-align:center;font-weight:bold">${data.dateEval||""}</td>
-          <td>${data.chefNomEval||""}${sigChefEvalHtml}</td>
-          <td>${data.salNomEval||""}${sigSalEvalHtml}</td>
-        </tr></tbody></table>`;
+      const saved = JSON.parse(localStorage.getItem("bonna_docs_v2") || "[]");
+      localStorage.setItem("bonna_docs_v2", JSON.stringify(saved.map(d => d.id === docId ? { ...d, chantier: nomChantier } : d)));
     }
-
-    const labels = {securite:"Fiche_Securite",notice:"Notice_Poste_Hyperbare",accueil:"Accueil_QSE_Renforce"};
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-      <title>${labels[type]}</title><style>${css}</style></head>
-      <body>
-        <div class="logo">
-          <span class="logo-box">BONNA TP</span>
-          <span style="color:#888;font-size:10px">${date}</span>
-        </div>
-        ${body}
-        <div class="note">📱 Sur iPhone : appuyez sur le bouton Partager → Imprimer, ou Enregistrer en PDF</div>
-      </body></html>`;
-
-    dlBlob(html, `${labels[type]}_${data.date||date.replace(/\//g,"-")}.html`, "text/html;charset=utf-8");
-    showToast("✓ Fichier téléchargé — ouvrez-le et utilisez Imprimer pour créer le PDF");
+    setShowMoveModal(null);
   };
 
-  const tabs=[{id:"securite",num:"FO-SEC",label:"Fiche Sécurité"},{id:"notice",num:"035_QSE",label:"Notice Poste"},{id:"accueil",num:"043_QSE",label:"Accueil QSE"},{id:"archive",num:"ARCHIVE",label:"Documents"},{id:"penibilite",num:"C2P",label:"Pénibilité"},{id:"carnet",num:"CARNET",label:"Carnet Plongée"}];
+  const icons = { securite: "🤿", notice: "📋", accueil: "🛡️" };
+  const labels = { securite: "Fiche Sécurité", notice: "Notice Poste", accueil: "Accueil QSE" };
+
+  const renderDocCard = (doc) => (
+    <div key={doc.id} style={s.archiveCard}>
+      <div style={s.archiveIcon(doc.type)}>{icons[doc.type]}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          {labels[doc.type]}{doc.nom ? " — "+doc.nom : ""}
+        </div>
+        <div style={{fontSize:10,color:C.gray,marginTop:1,fontFamily:"monospace"}}>
+          {doc.chantier} · {doc.date}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:5}}>
+        <button style={s.iconBtn} title="Déplacer" onClick={()=>setShowMoveModal(doc)}>📁</button>
+        <button style={s.iconBtn} onClick={()=>onEdit(doc)}>✏️</button>
+        <button style={s.iconBtn} onClick={()=>onExportPDF(doc)}>📄</button>
+        <button style={{...s.iconBtn,color:C.danger}} onClick={()=>setConfirmDeleteId(doc.id)}>🗑</button>
+      </div>
+    </div>
+  );
+
+  const filtered = docs.filter(d=>filter==="tous"||d.type===filter).sort((a,b)=>sortAsc?a.savedAt.localeCompare(b.savedAt):b.savedAt.localeCompare(a.savedAt));
 
   return (
-    <div style={s.app}>
-      <div style={s.header}>
-        <div style={s.logoRow}>
-          <span style={s.logoBox}>BONNA TP</span>
-          <span style={s.appTitle}>Formulaires Terrain</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={s.appSub}>Gestion sécurité hyperbare</div>
-        <div style={{display:"flex",alignItems:"center",gap:5}}>
-          {syncing ? (
-            <span style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontFamily:"monospace"}}>↻ sync…</span>
-          ) : lastSync ? (
-            <span style={{fontSize:9,color:"rgba(255,255,255,0.4)",fontFamily:"monospace",cursor:"pointer"}} onClick={fetchDocs}>
-              ✓ {lastSync.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
+    <div style={s.view}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:15,fontWeight:700}}>
+          {chantierOuvert ? (
+            <span style={{display:"flex",alignItems:"center",gap:6}}>
+              <button onClick={()=>setChantierOuvert(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,lineHeight:1,padding:0,color:C.blue}}>←</button>
+              📁 {chantierOuvert}
             </span>
-          ) : null}
+          ) : "Documents"}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          {!chantierOuvert && (
+            <button onClick={()=>setView(v=>v==="chantiers"?"tous":"chantiers")} style={{background:C.white,border:"1.5px solid "+C.grayLight,borderRadius:7,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600,color:view==="chantiers"?C.blueMid:C.gray}}>
+              {view==="chantiers" ? "📋 Liste" : "📁 Chantiers"}
+            </button>
+          )}
         </div>
       </div>
-      </div>
 
-      <div style={s.tabBar}>
-        {tabs.map(t=>(
-          <button key={t.id} style={s.tabBtn(tab===t.id)} onClick={()=>setTab(t.id)}>
-            <span style={s.tabNum(tab===t.id)}>{t.num}</span>{t.label}
-          </button>
-        ))}
-      </div>
+      {!chantierOuvert && view === "chantiers" && (
+        <>
+          {!showNewChantier ? (
+            <button onClick={()=>setShowNewChantier(true)} style={{width:"100%",padding:"12px",marginBottom:12,background:C.white,border:"2px dashed "+C.blueMid,borderRadius:10,cursor:"pointer",color:C.blueMid,fontFamily:"inherit",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              ＋ Créer un dossier chantier
+            </button>
+          ) : (
+            <div style={{background:C.white,borderRadius:10,padding:12,marginBottom:12,boxShadow:s.card.boxShadow}}>
+              <label style={s.label}>Nom du chantier</label>
+              <div style={{display:"flex",gap:8,marginTop:4}}>
+                <input value={newChantierNom} onChange={e=>setNewChantierNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&creerChantier()} placeholder="Ex : Port de Bordeaux…" autoFocus style={{...s.input,flex:1}}/>
+                <button onClick={creerChantier} style={{background:C.blue,color:"#fff",border:"none",borderRadius:7,padding:"8px 14px",fontFamily:"inherit",fontWeight:700,cursor:"pointer",fontSize:13}}>Créer</button>
+                <button onClick={()=>{setShowNewChantier(false);setNewChantierNom("");}} style={{background:C.bg,border:"1.5px solid "+C.grayLight,borderRadius:7,padding:"8px 10px",fontFamily:"inherit",cursor:"pointer",fontSize:13}}>✕</button>
+              </div>
+            </div>
+          )}
 
-      {tab==="securite" && <VueSecurite data={securite} setData={setSecurite} onSave={()=>saveDoc("securite",securite)} onUpdate={()=>updateDoc("securite",securite)} onExportPDF={()=>genPDF("securite",securite)} editingDocId={editingDocId} onClear={()=>{setSecurite(emptySecurite());setEditingDocId(null);}} />}
-      {tab==="notice" && <VueNotice data={notice} setData={setNotice} onSave={()=>saveDoc("notice",notice)} onUpdate={()=>updateDoc("notice",notice)} onExportPDF={()=>genPDF("notice",notice)} editingDocId={editingDocId} onClear={()=>{setNotice(emptyNotice());setEditingDocId(null);}} />}
-      {tab==="accueil" && <VueAccueil data={accueil} setData={setAccueil} onSave={()=>saveDoc("accueil",accueil)} onUpdate={()=>updateDoc("accueil",accueil)} onExportPDF={()=>genPDF("accueil",accueil)} editingDocId={editingDocId} onClear={()=>{setAccueil(emptyAccueil());setEditingDocId(null);}} />}
-      {tab==="archive" && <VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)} />}
-      {tab==="penibilite" && <VuePenibilite docs={docs} />}
-      {tab==="carnet" && <VueCarnetPlongee docs={docs} />}
+          {chantiers.length === 0 && docsSansChantier.length === 0 ? (
+            <div style={{textAlign:"center",padding:"40px 20px",color:C.gray}}>
+              <div style={{fontSize:40,marginBottom:10}}>📂</div>
+              <p style={{fontSize:13}}>Aucun document. Créez un dossier chantier pour commencer.</p>
+            </div>
+          ) : (
+            <>
+              {chantiers.filter(nom=>nom&&nom!=="—"&&nom.trim()!=="").map(nom=>{
+                const nb=docsChantier(nom).length;
+                return (
+                  <div key={nom} style={{background:C.white,borderRadius:10,boxShadow:"0 2px 12px rgba(26,58,110,0.08)",marginBottom:9,overflow:"hidden"}}>
+                    <div onClick={()=>setChantierOuvert(nom)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",cursor:"pointer"}}>
+                      <div style={{width:42,height:42,borderRadius:10,background:C.blueLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>📁</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:14,color:C.text}}>{nom}</div>
+                        <div style={{fontSize:11,color:C.gray,marginTop:1}}>{nb} document{nb!==1?"s":""}</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button onClick={e=>{e.stopPropagation();setConfirmDeleteChantier(nom);}} style={{...s.iconBtn,color:C.danger}} title="Supprimer le dossier">🗑</button>
+                        <span style={{color:C.gray,fontSize:18}}>›</span>
+                      </div>
+                    </div>
+                    {nb > 0 && (
+                      <div style={{borderTop:"1px solid "+C.grayLight,padding:"6px 14px 8px"}}>
+                        {docsChantier(nom).slice(-2).reverse().map(doc=>(
+                          <div key={doc.id} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 0",fontSize:11}}>
+                            <span>{icons[doc.type]}</span>
+                            <span style={{color:C.text,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{labels[doc.type]}{doc.nom?" — "+doc.nom:""}</span>
+                            <span style={{color:C.gray,fontFamily:"monospace",fontSize:10,flexShrink:0}}>{doc.date}</span>
+                          </div>
+                        ))}
+                        {nb > 2 && <div style={{fontSize:10,color:C.gray,textAlign:"center",marginTop:2}}>+{nb-2} autre{nb-2>1?"s":""}</div>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {docsSansChantier.length > 0 && (
+                <>
+                  <div style={{fontSize:11,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.5,margin:"12px 0 8px"}}>Sans dossier ({docsSansChantier.length})</div>
+                  {docsSansChantier.map(doc=>renderDocCard(doc))}
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
 
-      <Toast message={toast} />
+      {chantierOuvert && (
+        <>
+          <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
+            {["tous","securite","notice","accueil"].map(f=>(
+              <button key={f} style={s.filterChip(filter===f)} onClick={()=>setFilter(f)}>
+                {f==="tous"?"Tous":labels[f]}
+              </button>
+            ))}
+          </div>
+          {(()=>{
+            const docsF=docsChantier(chantierOuvert).filter(d=>filter==="tous"||d.type===filter).sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
+            return docsF.length===0?(
+              <div style={{textAlign:"center",padding:"36px 20px",color:C.gray}}>
+                <div style={{fontSize:36,marginBottom:8}}>📄</div>
+                <p style={{fontSize:13}}>Aucun document dans ce dossier.</p>
+              </div>
+            ):docsF.map(doc=>renderDocCard(doc));
+          })()}
+        </>
+      )}
+
+      {!chantierOuvert && view === "tous" && (
+        <>
+          <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto"}}>
+            {["tous","securite","notice","accueil"].map(f=>(
+              <button key={f} style={s.filterChip(filter===f)} onClick={()=>setFilter(f)}>
+                {f==="tous"?"Tous":labels[f]}
+              </button>
+            ))}
+          </div>
+          {filtered.length===0?(
+            <div style={{textAlign:"center",padding:"40px 20px",color:C.gray}}>
+              <div style={{fontSize:36,marginBottom:10}}>📂</div>
+              <p style={{fontSize:13}}>Aucun document.</p>
+            </div>
+          ):filtered.map(doc=>renderDocCard(doc))}
+        </>
+      )}
+
+      {confirmDeleteChantier && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:C.white,borderRadius:14,padding:22,width:"100%",maxWidth:340,boxShadow:"0 8px 40px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>Supprimer le dossier ?</div>
+            <div style={{fontSize:12,color:C.gray,marginBottom:20,lineHeight:1.5}}><strong>"{confirmDeleteChantier}"</strong><br/>Les documents ne seront pas supprimés.</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setConfirmDeleteChantier(null)} style={{flex:1,padding:"11px",background:C.bg,border:"1.5px solid "+C.grayLight,borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer"}}>Annuler</button>
+              <button onClick={()=>{supprimerChantier(confirmDeleteChantier);setConfirmDeleteChantier(null);}} style={{flex:1,padding:"11px",background:C.danger,border:"none",borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer",color:"#fff"}}>🗑 Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteId && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:C.white,borderRadius:14,padding:22,width:"100%",maxWidth:340,boxShadow:"0 8px 40px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>Supprimer ce document ?</div>
+            <div style={{fontSize:12,color:C.gray,marginBottom:20,lineHeight:1.5}}>Cette action est irréversible.</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setConfirmDeleteId(null)} style={{flex:1,padding:"11px",background:C.bg,border:"1.5px solid "+C.grayLight,borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer"}}>Annuler</button>
+              <button onClick={()=>{onDelete(confirmDeleteId);setConfirmDeleteId(null);}} style={{flex:1,padding:"11px",background:C.danger,border:"none",borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer",color:"#fff"}}>🗑 Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMoveModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:400,display:"flex",alignItems:"flex-end"}}>
+          <div style={{background:C.white,borderRadius:"16px 16px 0 0",width:"100%",padding:"20px 16px 36px"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>📁 Déplacer vers un dossier</div>
+            <div style={{fontSize:12,color:C.gray,marginBottom:16}}>{labels[showMoveModal.type]}{showMoveModal.nom?" — "+showMoveModal.nom:""}</div>
+            {chantiers.length === 0 ? (
+              <div style={{color:C.gray,fontSize:13,textAlign:"center",padding:"16px 0"}}>Aucun dossier créé.</div>
+            ) : chantiers.map(nom=>(
+              <div key={nom} onClick={()=>deplacerDoc(showMoveModal.id,nom)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:10,marginBottom:7,background:showMoveModal.chantier===nom?C.blueLight:C.bg,border:"1.5px solid "+(showMoveModal.chantier===nom?C.blueMid:C.grayLight),cursor:"pointer"}}>
+                <span style={{fontSize:20}}>📁</span>
+                <span style={{fontWeight:600,fontSize:13,flex:1}}>{nom}</span>
+                {showMoveModal.chantier===nom&&<span style={{color:C.blueMid,fontWeight:700}}>✓</span>}
+              </div>
+            ))}
+            <button onClick={()=>setShowMoveModal(null)} style={{width:"100%",marginTop:8,padding:"12px",background:C.bg,border:"1.5px solid "+C.grayLight,borderRadius:10,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer",color:C.gray}}>Annuler</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 
 // ─── VUE PÉNIBILITÉ ──────────────────────────────────────────────────────────
@@ -2048,17 +1829,28 @@ function App() {
     </div>
   );
 }
-// Monter l'app — attendre que la config Supabase soit chargée
-window.__ENV_PROMISE__.then(() => {
+// Monter l'app immédiatement, config Supabase chargée en arrière-plan
+function mountApp() {
   try {
     const root = ReactDOM.createRoot(document.getElementById("root"));
     root.render(React.createElement(App));
     const loader = document.getElementById("loading");
     if (loader) loader.style.display = "none";
   } catch(e) {
-    document.getElementById("loading").innerHTML = '<div style="padding:20px;color:#fff;font-family:monospace;font-size:12px"><b>Erreur:</b><br>' + e.message + '<br><br>' + (e.stack||'').replace(/\n/g,'<br>') + '</div>';
+    const loader = document.getElementById("loading");
+    if (loader) loader.innerHTML = '<div style="padding:20px;color:#fff;font-family:monospace;font-size:11px"><b>Erreur:</b><br>' + e.message + '</div>';
     console.error("App mount error:", e);
   }
+}
+
+// Essayer de charger la config d'abord, avec timeout de 2s
+const configTimeout = setTimeout(() => mountApp(), 2000);
+window.__ENV_PROMISE__.then(() => {
+  clearTimeout(configTimeout);
+  mountApp();
+}).catch(() => {
+  clearTimeout(configTimeout);
+  mountApp();
 });
 
 
