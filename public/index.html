@@ -206,16 +206,24 @@ const getSupabaseKey = () => ((window.__ENV__ && window.__ENV__.SUPABASE_KEY) ||
 const supabaseReady = () => !!(getSupabaseUrl() && getSupabaseKey());
 
 // ── Supabase helpers ──
-const sbFetch = (path, opts={}) => fetch(`${getSupabaseUrl()}/rest/v1${path}`, {
-  ...opts,
-  headers: {
+const sbFetch = (path, opts={}) => {
+  const headers = {
     "apikey": getSupabaseKey(),
-    "Authorization": `Bearer ${getSupabaseKey()}`,
+    "Authorization": "Bearer " + getSupabaseKey(),
     "Content-Type": "application/json",
-    "Prefer": opts.prefer || "return=representation",
-    ...(opts.headers||{})
+  };
+  // Ajouter Prefer seulement si explicitement passé ou pour GET/POST
+  const method = (opts.method || "GET").toUpperCase();
+  if (opts.prefer) {
+    headers["Prefer"] = opts.prefer;
+  } else if (method === "GET" || method === "POST") {
+    headers["Prefer"] = "return=representation";
   }
-});
+  return fetch(getSupabaseUrl() + "/rest/v1" + path, {
+    ...opts,
+    headers: { ...headers, ...(opts.headers||{}) }
+  });
+};
 
 const loadDocs = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"[]"); } catch{ return []; } };
 const saveDocs = (docs) => localStorage.setItem(LS_KEY, JSON.stringify(docs));
@@ -1757,30 +1765,35 @@ function App() {
   // ── Charger depuis Supabase ──
   const fetchDocs = async () => {
     if (!supabaseReady()) {
-      // Pas de Supabase : charger depuis localStorage
       const local = loadDocs();
       if (local.length > 0) setDocs(local);
       return;
     }
     try {
       setSyncing(true);
-      const res = await sbFetch("/documents?order=saved_at.desc&limit=500");
+      const res = await sbFetch("/documents?order=saved_at.desc&limit=500&select=*");
       if (!res.ok) {
-        // Supabase KO : utiliser le cache local
+        console.warn("Supabase fetch error:", res.status);
         const local = loadDocs();
         if (local.length > 0) setDocs(local);
         return;
       }
       const rows = await res.json();
       if (!Array.isArray(rows)) {
+        console.warn("Supabase returned non-array:", rows);
         const local = loadDocs();
         if (local.length > 0) setDocs(local);
         return;
       }
-      // Fusionner : Supabase + localStorage (pour docs pas encore sync)
-      const remote = rows.map(r => ({ ...(r.payload||r), id: r.id, savedAt: r.saved_at }));
+      // Construire la liste depuis Supabase
+      const remote = rows
+        .filter(r => r && (r.payload || r.type))
+        .map(r => {
+          const base = r.payload || r;
+          return { ...base, id: r.id || base.id, savedAt: r.saved_at || base.savedAt };
+        });
+      // Garder les docs locaux en attente de sync (sauvegardés offline)
       const local = loadDocs();
-      // Ajouter les docs locaux qui ne sont pas dans Supabase
       const remoteIds = new Set(remote.map(d => String(d.id)));
       const localOnly = local.filter(d => !remoteIds.has(String(d.id)));
       const merged = [...remote, ...localOnly];
@@ -1789,7 +1802,6 @@ function App() {
       setLastSync(new Date());
     } catch(e) {
       console.error("Sync error:", e);
-      // En cas d'erreur réseau : afficher le cache local
       const local = loadDocs();
       if (local.length > 0) setDocs(local);
     } finally {
@@ -1800,7 +1812,7 @@ function App() {
   // Charger au démarrage + polling toutes les 30s
   useEffect(() => {
     fetchDocs();
-    const interval = setInterval(fetchDocs, 30000);
+    const interval = setInterval(fetchDocs, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1837,10 +1849,11 @@ function App() {
         await fetchDocs(); // recharger pour tous
         showToast("✓ Document sauvegardé et synchronisé");
       } catch(e) {
+        console.error("Supabase save error:", e);
         // Fallback local
         const updated=[...docs,newDoc];
         saveDocs(updated); setDocs(updated);
-        showToast("✓ Sauvegardé localement (hors ligne)");
+        showToast("✓ Sauvegardé localement");
       }
     } else {
       const updated=[...docs,newDoc];
@@ -1890,20 +1903,25 @@ function App() {
   };
 
   const deleteDoc = async (id) => {
-    // Suppression directe sans confirm() (bloqué dans Safari PWA)
+    // Supprimer localement immédiatement (feedback instantané)
+    const updated = docs.filter(d => String(d.id) !== String(id));
+    saveDocs(updated);
+    setDocs(updated);
+    showToast("Document supprimé");
+    // Puis supprimer sur Supabase en arrière-plan
     if (supabaseReady()) {
       try {
-        await sbFetch(`/documents?id=eq.${id}`, { method: "DELETE", prefer: "return=minimal" });
-        await fetchDocs();
+        const res = await sbFetch("/documents?id=eq." + id, { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json().catch(()=>({}));
+          console.error("Supabase DELETE error:", res.status, err);
+        }
+        // Resync pour les autres appareils
+        setTimeout(fetchDocs, 500);
       } catch(e) {
-        const updated=docs.filter(d=>d.id!==id);
-        saveDocs(updated); setDocs(updated);
+        console.error("Delete error:", e);
       }
-    } else {
-      const updated=docs.filter(d=>d.id!==id);
-      saveDocs(updated); setDocs(updated);
     }
-    showToast("Document supprimé");
   };
 
   const editDoc = (doc) => {
