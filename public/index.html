@@ -976,7 +976,8 @@ function VueAccueil({ data, setData, onSave, onUpdate, onExportPDF, editingDocId
 // ─── VUE ARCHIVE ─────────────────────────────────────────────────────────────
 function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
   const [view, setView] = useState("chantiers"); // "chantiers" | "tous"
-  const [chantierOuvert, setChantierOuvert] = useState(null); // nom du chantier ouvert
+  const [chantierOuvert, setChantierOuvert] = useState(null); //
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id du doc à supprimer nom du chantier ouvert
   const [filter, setFilter] = useState("tous");
   const [sortAsc, setSortAsc] = useState(false);
   const [showNewChantier, setShowNewChantier] = useState(false);
@@ -1109,17 +1110,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
         <button style={s.iconBtn} title="Déplacer" onClick={()=>setShowMoveModal(doc)}>📁</button>
         <button style={s.iconBtn} onClick={()=>onEdit(doc)}>✏️</button>
         <button style={s.iconBtn} onClick={()=>onExportPDF(doc)}>📄</button>
-        <button style={{...s.iconBtn,color:C.danger}} 
-          onClick={()=>{
-            if(window.__pendingDelete===doc.id) {
-              window.__pendingDelete=null;
-              onDelete(doc.id);
-            } else {
-              window.__pendingDelete=doc.id;
-              showToast("Appuyez à nouveau pour confirmer la suppression");
-              setTimeout(()=>{ window.__pendingDelete=null; }, 3000);
-            }
-          }}>🗑</button>
+        <button style={{...s.iconBtn,color:C.danger}} onClick={()=>setConfirmDeleteId(doc.id)}>🗑</button>
       </div>
     </div>
   );
@@ -1315,6 +1306,26 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
             </div>
           ) : filtered.map(doc=>renderDocCard(doc))}
         </>
+      )}
+
+      {/* ══════════ MODALE CONFIRMER SUPPRESSION ══════════ */}
+      {confirmDeleteId && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:C.white,borderRadius:14,padding:22,width:"100%",maxWidth:340,boxShadow:"0 8px 40px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>Supprimer ce document ?</div>
+            <div style={{fontSize:12,color:C.gray,marginBottom:20,lineHeight:1.5}}>Cette action est irréversible. Le document sera définitivement effacé.</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setConfirmDeleteId(null)}
+                style={{flex:1,padding:"11px",background:C.bg,border:`1.5px solid ${C.grayLight}`,borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                Annuler
+              </button>
+              <button onClick={()=>{onDelete(confirmDeleteId);setConfirmDeleteId(null);}}
+                style={{flex:1,padding:"11px",background:C.danger,border:"none",borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer",color:"#fff"}}>
+                🗑 Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ══════════ MODALE DÉPLACER ══════════ */}
