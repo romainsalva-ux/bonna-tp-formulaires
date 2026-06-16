@@ -1057,13 +1057,15 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
     .filter(d => filter === "tous" || d.type === filter)
     .sort((a,b) => sortAsc ? a.savedAt.localeCompare(b.savedAt) : b.savedAt.localeCompare(a.savedAt));
 
-  // ── Carte document ──
-  const DocCard = ({ doc }) => (
-    <div style={s.archiveCard}>
+  // ── Carte document (rendu inline pour compatibilité Babel CDN) ──
+  const renderDocCard = (doc) => (
+    <div key={doc.id} style={s.archiveCard}>
       <div style={s.archiveIcon(doc.type)}>{icons[doc.type]}</div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-          {labels[doc.type]}{doc.nom ? " — "+doc.nom : ""}
+          {["securite","notice","accueil"][["securite","notice","accueil"].indexOf(doc.type)]&&
+            (doc.type==="securite"?"Fiche Sécurité":doc.type==="notice"?"Notice Poste":"Accueil QSE")}
+          {doc.nom ? " — "+doc.nom : ""}
         </div>
         <div style={{fontSize:10,color:C.gray,marginTop:1,fontFamily:"monospace"}}>
           {doc.chantier} · {doc.date}
@@ -1218,7 +1220,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
                   <div style={{fontSize:11,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.5,margin:"12px 0 8px"}}>
                     Sans dossier ({docsSansChantier.length})
                   </div>
-                  {docsSansChantier.map(doc=><DocCard key={doc.id} doc={doc} />)}
+                  {docsSansChantier.map(doc=>{renderDocCard(doc)})}
                 </>
               )}
             </>
@@ -1247,7 +1249,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
                 Sauvegardez un formulaire avec le chantier "<strong>{chantierOuvert}</strong>",<br/>
                 ou déplacez un document existant ici via 📁.</p>
               </div>
-            ) : docsF.map(doc=><DocCard key={doc.id} doc={doc} />);
+            ) : docsF.map(doc=>{renderDocCard(doc)});
           })()}
         </>
       )}
@@ -1267,7 +1269,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
               <div style={{fontSize:36,marginBottom:10}}>📂</div>
               <p style={{fontSize:13}}>Aucun document enregistré.</p>
             </div>
-          ) : filtered.map(doc=><DocCard key={doc.id} doc={doc} />)}
+          ) : filtered.map(doc=>{renderDocCard(doc)})}
         </>
       )}
 
