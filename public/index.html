@@ -1109,7 +1109,17 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
         <button style={s.iconBtn} title="Déplacer" onClick={()=>setShowMoveModal(doc)}>📁</button>
         <button style={s.iconBtn} onClick={()=>onEdit(doc)}>✏️</button>
         <button style={s.iconBtn} onClick={()=>onExportPDF(doc)}>📄</button>
-        <button style={{...s.iconBtn,color:C.danger}} onClick={()=>onDelete(doc.id)}>🗑</button>
+        <button style={{...s.iconBtn,color:C.danger}} 
+          onClick={()=>{
+            if(window.__pendingDelete===doc.id) {
+              window.__pendingDelete=null;
+              onDelete(doc.id);
+            } else {
+              window.__pendingDelete=doc.id;
+              showToast("Appuyez à nouveau pour confirmer la suppression");
+              setTimeout(()=>{ window.__pendingDelete=null; }, 3000);
+            }
+          }}>🗑</button>
       </div>
     </div>
   );
@@ -1195,7 +1205,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
             </div>
           ) : (
             <>
-              {chantiers.map(nom => {
+              {chantiers.filter(nom => nom && nom !== "—" && nom.trim() !== "").map(nom => {
                 const nb = docsChantier(nom).length;
                 return (
                   <div key={nom} style={{
@@ -1845,7 +1855,7 @@ function App() {
   };
 
   const deleteDoc = async (id) => {
-    if(!confirm("Supprimer ce document ?")) return;
+    // Suppression directe sans confirm() (bloqué dans Safari PWA)
     if (supabaseReady()) {
       try {
         await sbFetch(`/documents?id=eq.${id}`, { method: "DELETE", prefer: "return=minimal" });
