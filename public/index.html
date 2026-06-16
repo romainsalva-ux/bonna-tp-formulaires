@@ -988,17 +988,27 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
 
   // Charger les chantiers depuis Supabase
   useEffect(() => {
+    // Charger les chantiers depuis Supabase
     if (!supabaseReady()) return;
     sbFetch("/chantiers?order=nom.asc&limit=200")
       .then(r => r.ok ? r.json() : [])
       .then(rows => {
-        if (rows.length > 0) {
-          const noms = rows.map(r => r.nom);
-          setChantiers(noms);
-          localStorage.setItem("bonna_chantiers", JSON.stringify(noms));
+        const fromSupabase = rows.map(r => r.nom);
+        // Ajouter aussi les noms de chantiers trouvés dans les docs locaux
+        const fromDocs = [...new Set(docs.map(d => d.chantier).filter(Boolean))];
+        // Merger : Supabase + docs locaux, sans doublon (insensible casse)
+        const merged = [...fromSupabase];
+        fromDocs.forEach(nom => {
+          if (!merged.some(c => (c||"").trim().toLowerCase() === (nom||"").trim().toLowerCase())) {
+            merged.push(nom);
+          }
+        });
+        if (merged.length > 0) {
+          setChantiers(merged);
+          localStorage.setItem("bonna_chantiers", JSON.stringify(merged));
         }
       }).catch(()=>{});
-  }, []);
+  }, [docs]);
 
   const saveChantiers = async (list) => {
     setChantiers(list);
@@ -1039,10 +1049,12 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
   };
 
   // ── Docs d'un chantier spécifique ──
-  const docsChantier = (nom) => docs.filter(d => d.chantier === nom);
+  // Comparaison normalisée (insensible casse + espaces)
+  const norm = (s) => (s||"").trim().toLowerCase();
+  const docsChantier = (nom) => docs.filter(d => norm(d.chantier) === norm(nom));
 
   // ── Docs sans chantier assigné ──
-  const docsSansChantier = docs.filter(d => !chantiers.includes(d.chantier));
+  const docsSansChantier = docs.filter(d => !chantiers.some(c => norm(c) === norm(d.chantier)));
 
   // ── Déplacer un doc vers un chantier ──
   const deplacerDoc = async (docId, nomChantier) => {
@@ -1242,7 +1254,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
                   <div style={{fontSize:11,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.5,margin:"12px 0 8px"}}>
                     Sans dossier ({docsSansChantier.length})
                   </div>
-                  {docsSansChantier.map(doc=>{renderDocCard(doc)})}
+                  {docsSansChantier.map(doc=>renderDocCard(doc))}
                 </>
               )}
             </>
@@ -1271,7 +1283,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
                 Sauvegardez un formulaire avec le chantier "<strong>{chantierOuvert}</strong>",<br/>
                 ou déplacez un document existant ici via 📁.</p>
               </div>
-            ) : docsF.map(doc=>{renderDocCard(doc)});
+            ) : docsF.map(doc=>renderDocCard(doc));
           })()}
         </>
       )}
@@ -1291,7 +1303,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
               <div style={{fontSize:36,marginBottom:10}}>📂</div>
               <p style={{fontSize:13}}>Aucun document enregistré.</p>
             </div>
-          ) : filtered.map(doc=>{renderDocCard(doc)})}
+          ) : filtered.map(doc=>renderDocCard(doc))}
         </>
       )}
 
@@ -1313,15 +1325,15 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
                 style={{
                   display:"flex",alignItems:"center",gap:10,
                   padding:"12px 14px",borderRadius:10,marginBottom:7,
-                  background: showMoveModal.chantier===nom ? C.blueLight : C.bg,
-                  border:`1.5px solid ${showMoveModal.chantier===nom ? C.blueMid : C.grayLight}`,
+                  background: norm(showMoveModal.chantier)===norm(nom) ? C.blueLight : C.bg,
+                  border:`1.5px solid ${norm(showMoveModal.chantier)===norm(nom) ? C.blueMid : C.grayLight}`,
                   cursor:"pointer",
                 }}
               >
                 <span style={{fontSize:20}}>📁</span>
                 <span style={{fontWeight:600,fontSize:13,flex:1}}>{nom}</span>
                 <span style={{fontSize:11,color:C.gray}}>{docsChantier(nom).length} doc{docsChantier(nom).length!==1?"s":""}</span>
-                {showMoveModal.chantier===nom && <span style={{color:C.blueMid,fontWeight:700}}>✓</span>}
+                {norm(showMoveModal.chantier)===norm(nom) && <span style={{color:C.blueMid,fontWeight:700}}>✓</span>}
               </div>
             ))}
             <button onClick={()=>setShowMoveModal(null)}
