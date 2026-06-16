@@ -977,7 +977,8 @@ function VueAccueil({ data, setData, onSave, onUpdate, onExportPDF, editingDocId
 function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
   const [view, setView] = useState("chantiers"); // "chantiers" | "tous"
   const [chantierOuvert, setChantierOuvert] = useState(null); //
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id du doc à supprimer nom du chantier ouvert
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id du doc à supprimer
+  const [confirmDeleteChantier, setConfirmDeleteChantier] = useState(null); // nom du dossier à supprimer nom du chantier ouvert
   const [filter, setFilter] = useState("tous");
   const [sortAsc, setSortAsc] = useState(false);
   const [showNewChantier, setShowNewChantier] = useState(false);
@@ -1043,8 +1044,6 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
 
   // ── Supprimer un chantier ──
   const supprimerChantier = (nom) => {
-    if (!confirm(`Supprimer le dossier "${nom}" ?
-Les documents qu'il contient ne seront pas supprimés.`)) return;
     saveChantiers(chantiers.filter(c => c !== nom));
     if (chantierOuvert === nom) setChantierOuvert(null);
   };
@@ -1224,7 +1223,7 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <button
-                          onClick={e=>{e.stopPropagation();supprimerChantier(nom);}}
+                          onClick={e=>{e.stopPropagation();setConfirmDeleteChantier(nom);}}
                           style={{...s.iconBtn,color:C.danger}}
                           title="Supprimer le dossier">🗑</button>
                         <span style={{color:C.gray,fontSize:18}}>›</span>
@@ -1306,6 +1305,31 @@ Les documents qu'il contient ne seront pas supprimés.`)) return;
             </div>
           ) : filtered.map(doc=>renderDocCard(doc))}
         </>
+      )}
+
+      {/* ══════════ MODALE CONFIRMER SUPPRESSION DOSSIER ══════════ */}
+      {confirmDeleteChantier && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:C.white,borderRadius:14,padding:22,width:"100%",maxWidth:340,boxShadow:"0 8px 40px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>Supprimer le dossier ?</div>
+            <div style={{fontSize:12,color:C.gray,marginBottom:4,lineHeight:1.5}}>
+              <strong>"{confirmDeleteChantier}"</strong>
+            </div>
+            <div style={{fontSize:11,color:C.gray,marginBottom:20,lineHeight:1.5}}>
+              Les documents qu'il contient ne seront pas supprimés.
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setConfirmDeleteChantier(null)}
+                style={{flex:1,padding:"11px",background:C.bg,border:`1.5px solid ${C.grayLight}`,borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                Annuler
+              </button>
+              <button onClick={()=>{supprimerChantier(confirmDeleteChantier);setConfirmDeleteChantier(null);}}
+                style={{flex:1,padding:"11px",background:C.danger,border:"none",borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer",color:"#fff"}}>
+                🗑 Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ══════════ MODALE CONFIRMER SUPPRESSION ══════════ */}
