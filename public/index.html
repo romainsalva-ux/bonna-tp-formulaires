@@ -445,7 +445,7 @@ function OpTable({ ops, onChange }) {
 }
 
 // ─── VUE FICHE SÉCURITÉ ───────────────────────────────────────────────────────
-function VueSecurite({ data, setData, onSave, onExportPDF }) {
+function VueSecurite({ data, setData, onSave, onUpdate, onExportPDF, editingDocId, onClear }) {
   const u = (k,v) => setData(p=>({...p,[k]:v}));
   const applyAI = (d) => {
     if (d.date) u("date",d.date); if (d.site) u("site",d.site);
@@ -464,6 +464,18 @@ function VueSecurite({ data, setData, onSave, onExportPDF }) {
   };
   return (
     <div style={s.view}>
+      {editingDocId && (
+        <div style={{background:"#e8f8ee",border:`1.5px solid ${C.success}`,borderRadius:9,padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:12,color:C.success,fontWeight:600}}>✏️ Mode modification — cliquez sur <strong>Modifier</strong> pour enregistrer les changements</div>
+          <button onClick={onClear} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit"}}>✕ Annuler</button>
+        </div>
+      )}
+      {editingDocId && (
+        <div style={{background:"#e8f8ee",border:`1.5px solid ${C.success}`,borderRadius:9,padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:12,color:C.success,fontWeight:600}}>✏️ Mode modification — cliquez sur <strong>Modifier</strong> pour enregistrer les changements</div>
+          <button onClick={onClear} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit"}}>✕ Annuler</button>
+        </div>
+      )}
       <AIBar form="securite" onFill={applyAI} />
       <SectionCard title="Informations générales">
         <div style={s.row2}>
@@ -506,7 +518,8 @@ function VueSecurite({ data, setData, onSave, onExportPDF }) {
         <Textarea value={data.observations} onChange={v=>u("observations",v)} placeholder="Observations particulières…" />
       </SectionCard>
       <div style={s.bottomBar}>
-        <button style={s.btn("secondary")} onClick={()=>setData(emptySecurite())}>🗑 Effacer</button>
+        <button style={s.btn("secondary")} onClick={onClear}>🗑 Effacer</button>
+        {editingDocId && <button style={{...s.btn("primary"),background:C.success,flex:1.2}} onClick={onUpdate}>✏️ Modifier</button>}
         <button style={s.btn("primary")} onClick={onSave}>💾 Sauvegarder</button>
         <button style={s.btn("accent")} onClick={onExportPDF}>📄 PDF</button>
       </div>
@@ -705,7 +718,7 @@ function SignaturePad({ label, value, onChange }) {
 }
 
 // ─── VUE NOTICE DE POSTE ──────────────────────────────────────────────────────
-function VueNotice({ data, setData, onSave, onExportPDF }) {
+function VueNotice({ data, setData, onSave, onUpdate, onExportPDF, editingDocId, onClear }) {
   const u = (k,v) => setData(p=>({...p,[k]:v}));
   const applyAI = (d) => {
     ["chantier","dateArrivee","dateDepart","nom","prenom","poste","typeSalarie",
@@ -714,6 +727,18 @@ function VueNotice({ data, setData, onSave, onExportPDF }) {
   };
   return (
     <div style={s.view}>
+      {editingDocId && (
+        <div style={{background:"#e8f8ee",border:`1.5px solid ${C.success}`,borderRadius:9,padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:12,color:C.success,fontWeight:600}}>✏️ Mode modification — cliquez sur <strong>Modifier</strong> pour enregistrer les changements</div>
+          <button onClick={onClear} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit"}}>✕ Annuler</button>
+        </div>
+      )}
+      {editingDocId && (
+        <div style={{background:"#e8f8ee",border:`1.5px solid ${C.success}`,borderRadius:9,padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:12,color:C.success,fontWeight:600}}>✏️ Mode modification — cliquez sur <strong>Modifier</strong> pour enregistrer les changements</div>
+          <button onClick={onClear} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit"}}>✕ Annuler</button>
+        </div>
+      )}
       <AIBar form="notice" onFill={applyAI} />
       <SectionCard title="Identification">
         <div style={s.row2}>
@@ -768,7 +793,8 @@ function VueNotice({ data, setData, onSave, onExportPDF }) {
         <SignaturePad label="Signature Salarié" value={data.sigSalarie} onChange={v=>u("sigSalarie",v)} />
       </SectionCard>
       <div style={s.bottomBar}>
-        <button style={s.btn("secondary")} onClick={()=>setData(emptyNotice())}>🗑 Effacer</button>
+        <button style={s.btn("secondary")} onClick={onClear}>🗑 Effacer</button>
+        {editingDocId && <button style={{...s.btn("primary"),background:C.success,flex:1.2}} onClick={onUpdate}>✏️ Modifier</button>}
         <button style={s.btn("primary")} onClick={onSave}>💾 Sauvegarder</button>
         <button style={s.btn("accent")} onClick={onExportPDF}>📄 PDF</button>
       </div>
@@ -794,13 +820,25 @@ function PartieHeader({ num, title }) {
   );
 }
 
-function VueAccueil({ data, setData, onSave, onExportPDF }) {
+function VueAccueil({ data, setData, onSave, onUpdate, onExportPDF, editingDocId, onClear }) {
   const u = (k,v) => setData(p=>({...p,[k]:v}));
   const applyAI = (d) => {
     ["chantier","date","nom","prenom","typeSalarie","chefNom","salNom"].forEach(k=>{ if(d[k]) u(k,d[k]); });
   };
   return (
     <div style={s.view}>
+      {editingDocId && (
+        <div style={{background:"#e8f8ee",border:`1.5px solid ${C.success}`,borderRadius:9,padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:12,color:C.success,fontWeight:600}}>✏️ Mode modification — cliquez sur <strong>Modifier</strong> pour enregistrer les changements</div>
+          <button onClick={onClear} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit"}}>✕ Annuler</button>
+        </div>
+      )}
+      {editingDocId && (
+        <div style={{background:"#e8f8ee",border:`1.5px solid ${C.success}`,borderRadius:9,padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{fontSize:12,color:C.success,fontWeight:600}}>✏️ Mode modification — cliquez sur <strong>Modifier</strong> pour enregistrer les changements</div>
+          <button onClick={onClear} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit"}}>✕ Annuler</button>
+        </div>
+      )}
       <AIBar form="accueil" onFill={applyAI} />
 
       <SectionCard title="Identification">
@@ -904,7 +942,8 @@ function VueAccueil({ data, setData, onSave, onExportPDF }) {
       </SectionCard>
 
       <div style={s.bottomBar}>
-        <button style={s.btn("secondary")} onClick={()=>setData(emptyAccueil())}>🗑 Effacer</button>
+        <button style={s.btn("secondary")} onClick={onClear}>🗑 Effacer</button>
+        {editingDocId && <button style={{...s.btn("primary"),background:C.success,flex:1.2}} onClick={onUpdate}>✏️ Modifier</button>}
         <button style={s.btn("primary")} onClick={onSave}>💾 Sauvegarder</button>
         <button style={s.btn("accent")} onClick={onExportPDF}>📄 PDF</button>
       </div>
@@ -1638,6 +1677,7 @@ function App() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(null);
   const [toast, setToast] = useState("");
+  const [editingDocId, setEditingDocId] = useState(null); // id du doc en cours d'édition
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
 
@@ -1712,6 +1752,46 @@ function App() {
     }
   };
 
+  const updateDoc = async (type, data) => {
+    if (!editingDocId) return;
+    const labels={securite:"Fiche Sécurité",notice:"Notice Poste Hyperbare",accueil:"Accueil QSE Renforcé"};
+    const updatedDoc = {
+      id: editingDocId,
+      type, label: labels[type],
+      chantier: data.site||data.chantier||"—",
+      date: data.date||data.dateArrivee||new Date().toISOString().slice(0,10),
+      nom: data.nom ? `${data.nom} ${data.prenom||""}`.trim() : "",
+      data,
+      savedAt: new Date().toISOString()
+    };
+    if (supabaseReady()) {
+      try {
+        await sbFetch(`/documents?id=eq.${editingDocId}`, {
+          method: "PATCH",
+          prefer: "return=minimal",
+          body: JSON.stringify({
+            chantier: updatedDoc.chantier,
+            date: updatedDoc.date,
+            nom: updatedDoc.nom,
+            saved_at: updatedDoc.savedAt,
+            payload: updatedDoc
+          })
+        });
+        await fetchDocs();
+        showToast("✓ Document modifié et synchronisé");
+      } catch(e) {
+        const updated = docs.map(d => d.id===editingDocId ? updatedDoc : d);
+        saveDocs(updated); setDocs(updated);
+        showToast("✓ Document modifié");
+      }
+    } else {
+      const updated = docs.map(d => d.id===editingDocId ? updatedDoc : d);
+      saveDocs(updated); setDocs(updated);
+      showToast("✓ Document modifié");
+    }
+    setEditingDocId(null);
+  };
+
   const deleteDoc = async (id) => {
     if(!confirm("Supprimer ce document ?")) return;
     if (supabaseReady()) {
@@ -1733,6 +1813,7 @@ function App() {
     if(doc.type==="securite") setSecurite({...emptySecurite(),...doc.data,operateurs:(doc.data.operateurs||[]).map(op=>({...emptyOp(),...op}))});
     if(doc.type==="notice") setNotice({...emptyNotice(),...doc.data});
     if(doc.type==="accueil") setAccueil({...emptyAccueil(),...doc.data});
+    setEditingDocId(doc.id);
     setTab(doc.type);
     showToast("Formulaire chargé — modifiez puis resauvegardez");
   };
@@ -1977,9 +2058,9 @@ function App() {
         ))}
       </div>
 
-      {tab==="securite" && <VueSecurite data={securite} setData={setSecurite} onSave={()=>saveDoc("securite",securite)} onExportPDF={()=>genPDF("securite",securite)} />}
-      {tab==="notice" && <VueNotice data={notice} setData={setNotice} onSave={()=>saveDoc("notice",notice)} onExportPDF={()=>genPDF("notice",notice)} />}
-      {tab==="accueil" && <VueAccueil data={accueil} setData={setAccueil} onSave={()=>saveDoc("accueil",accueil)} onExportPDF={()=>genPDF("accueil",accueil)} />}
+      {tab==="securite" && <VueSecurite data={securite} setData={setSecurite} onSave={()=>saveDoc("securite",securite)} onUpdate={()=>updateDoc("securite",securite)} onExportPDF={()=>genPDF("securite",securite)} editingDocId={editingDocId} onClear={()=>{setSecurite(emptySecurite());setEditingDocId(null);}} />}
+      {tab==="notice" && <VueNotice data={notice} setData={setNotice} onSave={()=>saveDoc("notice",notice)} onUpdate={()=>updateDoc("notice",notice)} onExportPDF={()=>genPDF("notice",notice)} editingDocId={editingDocId} onClear={()=>{setNotice(emptyNotice());setEditingDocId(null);}} />}
+      {tab==="accueil" && <VueAccueil data={accueil} setData={setAccueil} onSave={()=>saveDoc("accueil",accueil)} onUpdate={()=>updateDoc("accueil",accueil)} onExportPDF={()=>genPDF("accueil",accueil)} editingDocId={editingDocId} onClear={()=>{setAccueil(emptyAccueil());setEditingDocId(null);}} />}
       {tab==="archive" && <VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)} />}
       {tab==="penibilite" && <VuePenibilite docs={docs} />}
       {tab==="carnet" && <VueCarnetPlongee docs={docs} />}
