@@ -1046,71 +1046,144 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
     setShowMoveModal(null);
   };
 
-  // ── Export PDF multi-documents ──
+  // ── Export PDF multi-documents — COMPLET ──
   const exportSelectionPDF = async (docsToExport) => {
     const date = new Date().toLocaleDateString("fr-FR");
     const labels2 = {securite:"Fiche Sécurité", notice:"Notice Poste Hyperbare", accueil:"Accueil QSE Renforcé"};
-    const css = "body{font-family:Arial,sans-serif;font-size:11px;padding:15px;margin:0}h1{font-size:13px;text-align:center;border-bottom:2px solid #1a3a6e;padding-bottom:4px;color:#1a3a6e;margin-bottom:7px}h2{font-size:10px;background:#1a3a6e;color:#fff;padding:4px 8px;margin:8px 0 4px}h3{font-size:11px;color:#1a3a6e;border-bottom:1px solid #ccc;padding-bottom:3px;margin:10px 0 5px}table{width:100%;border-collapse:collapse;margin-bottom:7px;font-size:9px}th{background:#e8eef8;padding:3px 5px;border:1px solid #ccc;text-align:left}td{border:1px solid #ccc;padding:3px 5px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}.f{display:flex;margin-bottom:3px;gap:4px;font-size:10px}.f b{min-width:120px;flex-shrink:0}.f span{border-bottom:1px solid #bbb;flex:1;padding-left:2px}.logo{display:flex;align-items:center;gap:8px;margin-bottom:6px}.logo-box{background:#e85d1a;color:#fff;font-weight:bold;padding:2px 8px;font-size:11px}.page-break{page-break-before:always}.separator{border:none;border-top:3px solid #1a3a6e;margin:15px 0}.doc-title{background:#f0f4ff;border-left:4px solid #2356a8;padding:8px 10px;margin-bottom:8px;font-weight:bold;font-size:12px}.chk{font-size:9px;line-height:1.4}.chk-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 8px;margin-bottom:5px}@media print{@page{margin:10mm}}";
+    const css = "body{font-family:Arial,sans-serif;font-size:10px;padding:12px;margin:0}h1{font-size:13px;text-align:center;border-bottom:2px solid #1a3a6e;padding-bottom:4px;color:#1a3a6e;margin-bottom:7px}h2{font-size:10px;background:#1a3a6e;color:#fff;padding:4px 8px;margin:8px 0 4px}table{width:100%;border-collapse:collapse;margin-bottom:7px;font-size:9px}th{background:#e8eef8;padding:3px 5px;border:1px solid #ccc;text-align:left}td{border:1px solid #ccc;padding:3px 5px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:5px}.f{display:flex;margin-bottom:3px;gap:4px;font-size:10px}.f b{min-width:120px;flex-shrink:0}.f span{border-bottom:1px solid #bbb;flex:1}.logo{display:flex;align-items:center;gap:8px;margin-bottom:6px}.logo-box{background:#e85d1a;color:#fff;font-weight:bold;padding:2px 8px;font-size:11px}.page-break{page-break-before:always}.doc-title{background:#f0f4ff;border-left:4px solid #2356a8;padding:6px 10px;margin-bottom:6px;font-weight:bold;font-size:11px}.chk{font-size:9px;line-height:1.5}.chk-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 8px;margin-bottom:5px}.sig-box{height:45px;border:1px solid #ccc;border-radius:3px;margin-top:2px;background:#fafafa}.risk-img{width:100%;display:block;border:1px solid #ccc;margin:4px 0}@media print{@page{margin:10mm}}";
+
+    // Charger les images Accueil QSE une seule fois
+    let viergeURI = null, corrURI = null;
+    if (docsToExport.some(d => d.type === "accueil")) {
+      viergeURI = await loadImageAsDataURI(RISQUE_IMG_VIERGE);
+      corrURI = await loadImageAsDataURI(RISQUE_IMG_CORRECTION);
+    }
 
     let sections = [];
+
     for (let i = 0; i < docsToExport.length; i++) {
       const doc = docsToExport[i];
       const data = doc.data || {};
       let body = "";
+      const pageBreak = i > 0 ? "<div class='page-break'></div>" : "";
+      const logoHdr = "<div class='logo'><span class='logo-box'>BONNA TP</span><span style='color:#888;font-size:9px'>"+date+"</span></div>";
 
+      // ── FICHE DE SÉCURITÉ ──
       if (doc.type === "securite") {
-        const ops=(data.operateurs||[]).map((op,j)=>"<tr><td>OP"+(j+1)+"</td><td>"+(op.equipe||"")+"</td><td>"+(op.heureImm||"")+"</td><td>"+(op.prof||"")+"</td><td>"+(op.tpsFond||"")+"</td><td>"+(op.p12||"")+"</td><td>"+(op.p9||"")+"</td><td>"+(op.p6||"")+"</td><td>"+(op.p3||"")+"</td><td>"+(op.sortie||"")+"</td></tr>").join("");
-        body="<div class='g2'>"
+        const ops=(data.operateurs||[]).map((op,j)=>
+          "<tr><td>OP"+(j+1)+"</td><td>"+(op.equipe||"")+"</td><td>"+(op.intervalle||"")+"</td><td>"+(op.heureImm||"")+"</td>"
+          +"<td>"+(op.prof||"")+"</td><td>"+(op.tpsFond||"")+"</td>"
+          +"<td>"+(op.p12||"")+"</td><td>"+(op.p9||"")+"</td><td>"+(op.p6||"")+"</td><td>"+(op.p3||"")+"</td>"
+          +"<td>"+(op.sortie||"")+"</td><td>"+(op.duree||"")+"</td></tr>").join("");
+        const prs=(data.operateurs||[]).map((op,j)=>
+          "<tr><td>OP"+(j+1)+"</td><td>"+(op.airDebut||"")+"</td><td>"+(op.airFin||"")+"</td>"
+          +"<td>"+(op.auxDebut||"")+"</td><td>"+(op.auxFin||"")+"</td><td>"+(op.btl||"")+"</td>"
+          +"<td>"+(op.aide||"")+"</td><td>"+(op.secours||"")+"</td><td>"+(op.surv||"")+"</td><td>"+(op.coh||"")+"</td></tr>").join("");
+        body = "<div class='g2'>"
           +"<div class='f'><b>Date :</b><span>"+(data.date||"")+"</span></div>"
           +"<div class='f'><b>Site :</b><span>"+(data.site||"")+"</span></div>"
+          +"<div class='f'><b>Semaine N° :</b><span>"+(data.semaine||"")+"</span></div>"
+          +"<div class='f'><b>Plongée N° :</b><span>"+(data.plongeeNum||"")+"</span></div>"
           +"<div class='f'><b>Méthode :</b><span>"+(data.methode||"")+"</span></div>"
           +"<div class='f'><b>Classe :</b><span>"+(data.classe||"")+"</span></div>"
           +"<div class='f'><b>Mélange :</b><span>"+(data.melange||"")+"</span></div>"
+          +"<div class='f'><b>Support :</b><span>"+(data.support||"")+"</span></div>"
           +"<div class='f'><b>État mer :</b><span>"+(data.etatMer||"")+"</span></div>"
+          +"<div class='f'><b>Altitude :</b><span>"+(data.altitude||"")+" m</span></div>"
           +"<div class='f'><b>Vent :</b><span>"+(data.vent||"")+" Bf</span></div>"
+          +"<div class='f'><b>Houle :</b><span>"+(data.houle||"")+" m</span></div>"
+          +"<div class='f'><b>Courant :</b><span>"+(data.courant||"")+"</span></div>"
+          +"<div class='f'><b>Visibilité :</b><span>"+(data.visibilite||"")+" m</span></div>"
+          +"<div class='f'><b>Temps :</b><span>"+(data.temps||"")+"</span></div>"
           +"<div class='f'><b>T° eau :</b><span>"+(data.tempEau||"")+" °C</span></div>"
           +"</div>"
-          +"<h2>Équipe</h2>"
-          +"<table><thead><tr><th>OP</th><th>Équipe</th><th>H.imm.</th><th>Prof.</th><th>Tps fond</th><th>12m</th><th>9m</th><th>6m</th><th>3m</th><th>H.sortie</th></tr></thead><tbody>"+ops+"</tbody></table>"
-          +(data.observations?"<div style='font-size:9px;border:1px solid #ccc;padding:4px'>"+data.observations+"</div>":"");
+          +"<h2>Équipe — Données de plongée</h2>"
+          +"<table><thead><tr><th>OP</th><th>Équipe</th><th>Interv.</th><th>H.imm.</th><th>Prof.</th><th>Tps fond</th><th>12m</th><th>9m</th><th>6m</th><th>3m</th><th>H.sortie</th><th>Durée</th></tr></thead><tbody>"+ops+"</tbody></table>"
+          +"<h2>Pressions &amp; rôles</h2>"
+          +"<table><thead><tr><th>OP</th><th>Air pr.D</th><th>Air pr.F</th><th>Aux.D</th><th>Aux.F</th><th>Btl.</th><th>Aide</th><th>Secours</th><th>Surv.</th><th>COH</th></tr></thead><tbody>"+prs+"</tbody></table>"
+          +(data.observations?"<h2>Observations</h2><div style='border:1px solid #ccc;padding:5px;font-size:9px'>"+data.observations+"</div>":"");
 
+      // ── NOTICE DE POSTE ──
       } else if (doc.type === "notice") {
         const mkChks=(items,vals)=>items.map((l,k)=>"<div class='chk'>"+(vals[k]==="oui"?"☑":"☐")+" "+l+"</div>").join("");
-        body="<div class='g2'>"
+        const sr=data.sigResponsable?"<img src='"+data.sigResponsable+"' style='height:45px;display:block;border:1px solid #ccc;margin-top:2px'/>":"<div class='sig-box'></div>";
+        const ss=data.sigSalarie?"<img src='"+data.sigSalarie+"' style='height:45px;display:block;border:1px solid #ccc;margin-top:2px'/>":"<div class='sig-box'></div>";
+        body = "<div class='g2'>"
           +"<div class='f'><b>Chantier :</b><span>"+(data.chantier||"")+"</span></div>"
+          +"<div class='f'><b>Date arrivée :</b><span>"+(data.dateArrivee||"")+"</span></div>"
+          +"<div class='f'><b>Date départ :</b><span>"+(data.dateDepart||"")+"</span></div>"
           +"<div class='f'><b>Nom :</b><span>"+(data.nom||"")+"</span></div>"
+          +"<div class='f'><b>Prénom :</b><span>"+(data.prenom||"")+"</span></div>"
           +"<div class='f'><b>Poste :</b><span>"+(data.poste||"")+"</span></div>"
           +"<div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div>"
           +"<div class='f'><b>Profondeur max :</b><span>"+(data.profondeur||"")+" m</span></div>"
+          +"<div class='f'><b>Type plongée :</b><span>"+(data.plongeeType||"")+"</span></div>"
+          +"<div class='f'><b>Support :</b><span>"+(data.supportType||"")+"</span></div>"
+          +"<div class='f'><b>Gaz fond :</b><span>"+(data.gazFond||"")+"</span></div>"
+          +"<div class='f'><b>Gaz palier :</b><span>"+(data.gazPalier||"")+"</span></div>"
           +"</div>"
-          +"<h2>Formation au poste</h2><div class='chk-grid'>"+mkChks(NOTICE_FORMATION,Object.values(data.formation||{}))+"</div>"
-          +"<h2>Risques</h2><div class='chk-grid'>"+mkChks(NOTICE_RISQUES,Object.values(data.risques||{}))+"</div>"
-          +(data.commentaires?"<div style='font-size:9px;border:1px solid #ccc;padding:4px;margin-top:4px'>"+data.commentaires+"</div>":"")
-          +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px'>"
-          +"<div style='font-size:10px;font-weight:bold'>Responsable : "+(data.respNom||"")+"</div>"
-          +"<div style='font-size:10px;font-weight:bold'>Salarié : "+(data.salNom||"")+"</div>"
+          +"<h2>Contrôles préalables</h2>"
+          +"<div class='chk-grid'>"+mkChks(["1. Aptitude médicale","2. Habilitations","3. SST"],[data.ctrl1,data.ctrl2,data.ctrl3])+"</div>"
+          +"<h2>Formation au poste de travail</h2>"
+          +"<div class='chk-grid'>"+mkChks(NOTICE_FORMATION,Object.values(data.formation||{}))+"</div>"
+          +"<h2>Risques et moyens de prévention</h2>"
+          +"<div class='chk-grid'>"+mkChks(NOTICE_RISQUES,Object.values(data.risques||{}))+"</div>"
+          +"<h2>Définition de fonction</h2>"
+          +"<div class='chk-grid'>"+mkChks(NOTICE_DEF,Object.values(data.definition||{}))+"</div>"
+          +(data.commentaires?"<h2>Commentaires</h2><div style='border:1px solid #ccc;padding:5px;font-size:9px'>"+data.commentaires+"</div>":"")
+          +"<h2>Signatures</h2>"
+          +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px'>"
+          +"<div><div style='font-size:9px;font-weight:bold'>Responsable : "+(data.respNom||"")+"</div><div style='font-size:8px;color:#888'>"+(data.dateSign||"")+"</div>"+sr+"</div>"
+          +"<div><div style='font-size:9px;font-weight:bold'>Salarié : "+(data.salNom||"")+"</div>"+ss+"</div>"
           +"</div>";
 
+      // ── ACCUEIL QSE ──
       } else if (doc.type === "accueil") {
-        const mkChks=(items,vals)=>items.map((l,k)=>"<div class='chk'>"+(vals[k]?"☑":"☐")+" "+l+"</div>").join("");
-        const evalRows=ACCUEIL_EVAL.map((l,k)=>{const v=(data.evaluation&&data.evaluation[k])||"";return "<tr><td>"+l+"</td><td>"+(v==="mauvais"?"●":"○")+"</td><td>"+(v==="moyen"?"●":"○")+"</td><td>"+(v==="bon"?"●":"○")+"</td><td>"+(v==="tres_bon"?"●":"○")+"</td></tr>";}).join("");
-        body="<div class='g2'>"
+        const mkChksBool=(items,vals)=>items.map((l,k)=>"<div class='chk'>"+(vals[k]?"☑":"☐")+" "+l+"</div>").join("");
+        const tH=["Salarié en CDD","Salarié Intérimaire","Salarié Nouvel embauché (< 1 an)","Retour après arrêt > 3 mois"].map(o=>"<div class='chk'>"+(data.typeSalarie===o?"☑":"☐")+" "+o+"</div>").join("");
+        const rH=ACCUEIL_RISQUES.map((l,k)=>"<div class='chk'>"+(data.risques&&data.risques[k]?"☑":"☐")+" "+l+"</div>").join("");
+        const eH=ACCUEIL_ENG.map((l,k)=>"<div class='chk'>"+(data.engagements&&data.engagements[k]?"☑":"☐")+" "+l+"</div>").join("");
+        const evH=ACCUEIL_EVAL.map((l,k)=>{const v=(data.evaluation&&data.evaluation[k])||"";return "<tr><td>"+l+"</td><td style='text-align:center'>"+(v==="mauvais"?"●":"○")+"</td><td style='text-align:center'>"+(v==="moyen"?"●":"○")+"</td><td style='text-align:center'>"+(v==="bon"?"●":"○")+"</td><td style='text-align:center'>"+(v==="tres_bon"?"●":"○")+"</td></tr>";}).join("");
+        const s1=data.sigChefAccueil?"<img src='"+data.sigChefAccueil+"' style='height:40px;display:block;border:1px solid #ccc;margin-top:2px'/>":"<div class='sig-box'></div>";
+        const s2=data.sigSalarieAccueil?"<img src='"+data.sigSalarieAccueil+"' style='height:40px;display:block;border:1px solid #ccc;margin-top:2px'/>":"<div class='sig-box'></div>";
+        const s3=data.sigChefEval?"<img src='"+data.sigChefEval+"' style='height:40px;display:block;border:1px solid #ccc;margin-top:2px'/>":"<div class='sig-box'></div>";
+        const s4=data.sigSalarieEval?"<img src='"+data.sigSalarieEval+"' style='height:40px;display:block;border:1px solid #ccc;margin-top:2px'/>":"<div class='sig-box'></div>";
+
+        body = "<div class='g2'>"
           +"<div class='f'><b>Chantier :</b><span>"+(data.chantier||"")+"</span></div>"
-          +"<div class='f'><b>Nom :</b><span>"+(data.nom||"")+" "+(data.prenom||"")+"</span></div>"
-          +"<div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div>"
+          +"<div class='f'><b>Date accueil :</b><span>"+(data.date||"")+"</span></div>"
+          +"<div class='f'><b>Nom :</b><span>"+(data.nom||"")+"</span></div>"
+          +"<div class='f'><b>Prénom :</b><span>"+(data.prenom||"")+"</span></div>"
           +"</div>"
-          +"<h2>A. Risques</h2><div class='chk-grid'>"+mkChks(ACCUEIL_RISQUES,Object.values(data.risques||{}))+"</div>"
-          +"<h2>B. Engagements</h2><div class='chk-grid'>"+mkChks(ACCUEIL_ENG,Object.values(data.engagements||{}))+"</div>"
-          +"<h2>C. Évaluation</h2>"
-          +"<table><thead><tr><th>Critère</th><th>Mauvais</th><th>Moyen</th><th>Bon</th><th>Très bon</th></tr></thead><tbody>"+evalRows+"</tbody></table>"
-          +"<div style='font-size:10px'>Reconduire : "+(data.continuer||"—")+"</div>";
+          +"<div class='chk-grid' style='grid-template-columns:1fr'>"+tH+"</div>"
+          +"<h2>A. Présentation des risques</h2>"
+          +"<div class='chk-grid' style='grid-template-columns:1fr'>"+rH+"</div>"
+          +(viergeURI?"<img class='risk-img' src='"+viergeURI+"'/>":"")
+          +(data.risquesTexte?"<div style='border:1px solid #ccc;padding:4px;font-size:9px;margin-bottom:6px'>"+data.risquesTexte+"</div>":"")
+          +"<h2>B. Engagements santé &amp; sécurité</h2>"
+          +"<div class='chk-grid'>"+eH+"</div>"
+          +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px'>"
+          +"<div><div style='font-size:9px;font-weight:bold'>Chef : "+(data.chefNom||"")+"</div><div style='font-size:8px;color:#888'>"+(data.dateSign||"")+"</div>"+s1+"</div>"
+          +"<div><div style='font-size:9px;font-weight:bold'>Salarié : "+(data.salNom||"")+"</div>"+s2+"</div>"
+          +"</div>"
+          // Page 2 correction + évaluation
+          +"<div class='page-break'></div>"
+          +logoHdr
+          +"<div class='doc-title'>"+labels2[doc.type]+(doc.nom?" — "+doc.nom:"")+" — CORRECTION &amp; ÉVALUATION</div>"
+          +"<h1>ACCUEIL QSE RENFORCÉ — Page 2/2</h1>"
+          +(corrURI?"<h2>Correction — Risques &amp; mesures de prévention</h2><img class='risk-img' src='"+corrURI+"'/>":"")
+          +"<h2>C. Évaluation après 1 semaine</h2>"
+          +"<table><thead><tr><th>Critère</th><th>Mauvais</th><th>Moyen</th><th>Bon</th><th>Très bon</th></tr></thead><tbody>"+evH+"</tbody></table>"
+          +"<div class='f'><b>Reconduire :</b><span>"+(data.continuer||"")+"</span></div>"
+          +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px'>"
+          +"<div><div style='font-size:9px;font-weight:bold'>Chef : "+(data.chefNomEval||"")+"</div><div style='font-size:8px;color:#888'>"+(data.dateEval||"")+"</div>"+s3+"</div>"
+          +"<div><div style='font-size:9px;font-weight:bold'>Salarié : "+(data.salNomEval||"")+"</div>"+s4+"</div>"
+          +"</div>";
       }
 
-      const pageBreak = i > 0 ? "<div class='page-break'></div>" : "";
-      sections.push(pageBreak
-        + "<div class='logo'><span class='logo-box'>BONNA TP</span><span style='color:#888;font-size:9px'>"+date+"</span></div>"
+      sections.push(pageBreak + logoHdr
         + "<div class='doc-title'>"+labels2[doc.type]+(doc.nom?" — "+doc.nom:"")+(doc.chantier&&doc.chantier!=="—"?" · "+doc.chantier:"")+"</div>"
-        + "<h1>"+labels2[doc.type]+"</h1>"
+        + "<h1>"+labels2[doc.type].toUpperCase()+"</h1>"
         + body);
     }
 
@@ -1121,7 +1194,6 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
   };
-
   const icons = { securite: "🤿", notice: "📋", accueil: "🛡️" };
   const labels = { securite: "Fiche Sécurité", notice: "Notice Poste", accueil: "Accueil QSE" };
 
@@ -1234,7 +1306,7 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
 
       {chantierOuvert && (
         <>
-          <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
+          <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:2}}>
             {["tous","securite","notice","accueil"].map(f=>(
               <button key={f} style={s.filterChip(filter===f)} onClick={()=>setFilter(f)}>
                 {f==="tous"?"Tous":labels[f]}
@@ -1243,12 +1315,51 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
           </div>
           {(()=>{
             const docsF=docsChantier(chantierOuvert).filter(d=>filter==="tous"||d.type===filter).sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
-            return docsF.length===0?(
+            if(docsF.length===0) return (
               <div style={{textAlign:"center",padding:"36px 20px",color:C.gray}}>
                 <div style={{fontSize:36,marginBottom:8}}>📄</div>
                 <p style={{fontSize:13}}>Aucun document dans ce dossier.</p>
               </div>
-            ):docsF.map(doc=>renderDocCard(doc));
+            );
+            return (
+              <>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,padding:"8px 10px",background:C.blueLight,borderRadius:9}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <input type="checkbox"
+                      checked={docsF.length>0 && docsF.every(d=>selectedDocs.has(d.id))}
+                      onChange={e=>{
+                        const ns=new Set(selectedDocs);
+                        if(e.target.checked){docsF.forEach(d=>ns.add(d.id));}
+                        else{docsF.forEach(d=>ns.delete(d.id));}
+                        setSelectedDocs(ns);
+                      }}
+                      style={{width:16,height:16,accentColor:C.blueMid,cursor:"pointer"}}
+                    />
+                    <span style={{fontSize:12,color:C.blue,fontWeight:600}}>
+                      {selectedDocs.size>0 ? selectedDocs.size+" sélectionné"+(selectedDocs.size>1?"s":"") : "Tout sélectionner"}
+                    </span>
+                  </div>
+                  {selectedDocs.size>0 && (
+                    <button
+                      onClick={async()=>{setExportingPDF(true);try{await exportSelectionPDF(docsF.filter(d=>selectedDocs.has(d.id)));}finally{setExportingPDF(false);}}}
+                      disabled={exportingPDF}
+                      style={{background:C.accent,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",opacity:exportingPDF?0.7:1}}>
+                      {exportingPDF?"⏳ Export…":"📄 Exporter "+selectedDocs.size+" doc"+(selectedDocs.size>1?"s":"")+" en PDF"}
+                    </button>
+                  )}
+                </div>
+                {docsF.map(doc=>(
+                  <div key={doc.id} style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="checkbox"
+                      checked={selectedDocs.has(doc.id)}
+                      onChange={e=>{const ns=new Set(selectedDocs);e.target.checked?ns.add(doc.id):ns.delete(doc.id);setSelectedDocs(ns);}}
+                      style={{width:16,height:16,accentColor:C.blueMid,cursor:"pointer",flexShrink:0}}
+                    />
+                    <div style={{flex:1}}>{renderDocCard(doc)}</div>
+                  </div>
+                ))}
+              </>
+            );
           })()}
         </>
       )}
