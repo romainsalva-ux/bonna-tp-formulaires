@@ -994,6 +994,8 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
   const [showNewChantier, setShowNewChantier] = useState(false);
   const [newChantierNom, setNewChantierNom] = useState("");
   const [showMoveModal, setShowMoveModal] = useState(null);
+  const [selectedDocs, setSelectedDocs] = useState(new Set());
+  const [exportingPDF, setExportingPDF] = useState(false);
   const [chantiers, setChantiers] = useState(() => {
     try { return JSON.parse(localStorage.getItem("bonna_chantiers") || "[]"); } catch { return []; }
   });
@@ -1042,6 +1044,82 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
       localStorage.setItem("bonna_docs_v2", JSON.stringify(saved.map(d => d.id === docId ? { ...d, chantier: nomChantier } : d)));
     }
     setShowMoveModal(null);
+  };
+
+  // ── Export PDF multi-documents ──
+  const exportSelectionPDF = async (docsToExport) => {
+    const date = new Date().toLocaleDateString("fr-FR");
+    const labels2 = {securite:"Fiche Sécurité", notice:"Notice Poste Hyperbare", accueil:"Accueil QSE Renforcé"};
+    const css = "body{font-family:Arial,sans-serif;font-size:11px;padding:15px;margin:0}h1{font-size:13px;text-align:center;border-bottom:2px solid #1a3a6e;padding-bottom:4px;color:#1a3a6e;margin-bottom:7px}h2{font-size:10px;background:#1a3a6e;color:#fff;padding:4px 8px;margin:8px 0 4px}h3{font-size:11px;color:#1a3a6e;border-bottom:1px solid #ccc;padding-bottom:3px;margin:10px 0 5px}table{width:100%;border-collapse:collapse;margin-bottom:7px;font-size:9px}th{background:#e8eef8;padding:3px 5px;border:1px solid #ccc;text-align:left}td{border:1px solid #ccc;padding:3px 5px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}.f{display:flex;margin-bottom:3px;gap:4px;font-size:10px}.f b{min-width:120px;flex-shrink:0}.f span{border-bottom:1px solid #bbb;flex:1;padding-left:2px}.logo{display:flex;align-items:center;gap:8px;margin-bottom:6px}.logo-box{background:#e85d1a;color:#fff;font-weight:bold;padding:2px 8px;font-size:11px}.page-break{page-break-before:always}.separator{border:none;border-top:3px solid #1a3a6e;margin:15px 0}.doc-title{background:#f0f4ff;border-left:4px solid #2356a8;padding:8px 10px;margin-bottom:8px;font-weight:bold;font-size:12px}.chk{font-size:9px;line-height:1.4}.chk-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 8px;margin-bottom:5px}@media print{@page{margin:10mm}}";
+
+    let sections = [];
+    for (let i = 0; i < docsToExport.length; i++) {
+      const doc = docsToExport[i];
+      const data = doc.data || {};
+      let body = "";
+
+      if (doc.type === "securite") {
+        const ops=(data.operateurs||[]).map((op,j)=>"<tr><td>OP"+(j+1)+"</td><td>"+(op.equipe||"")+"</td><td>"+(op.heureImm||"")+"</td><td>"+(op.prof||"")+"</td><td>"+(op.tpsFond||"")+"</td><td>"+(op.p12||"")+"</td><td>"+(op.p9||"")+"</td><td>"+(op.p6||"")+"</td><td>"+(op.p3||"")+"</td><td>"+(op.sortie||"")+"</td></tr>").join("");
+        body="<div class='g2'>"
+          +"<div class='f'><b>Date :</b><span>"+(data.date||"")+"</span></div>"
+          +"<div class='f'><b>Site :</b><span>"+(data.site||"")+"</span></div>"
+          +"<div class='f'><b>Méthode :</b><span>"+(data.methode||"")+"</span></div>"
+          +"<div class='f'><b>Classe :</b><span>"+(data.classe||"")+"</span></div>"
+          +"<div class='f'><b>Mélange :</b><span>"+(data.melange||"")+"</span></div>"
+          +"<div class='f'><b>État mer :</b><span>"+(data.etatMer||"")+"</span></div>"
+          +"<div class='f'><b>Vent :</b><span>"+(data.vent||"")+" Bf</span></div>"
+          +"<div class='f'><b>T° eau :</b><span>"+(data.tempEau||"")+" °C</span></div>"
+          +"</div>"
+          +"<h2>Équipe</h2>"
+          +"<table><thead><tr><th>OP</th><th>Équipe</th><th>H.imm.</th><th>Prof.</th><th>Tps fond</th><th>12m</th><th>9m</th><th>6m</th><th>3m</th><th>H.sortie</th></tr></thead><tbody>"+ops+"</tbody></table>"
+          +(data.observations?"<div style='font-size:9px;border:1px solid #ccc;padding:4px'>"+data.observations+"</div>":"");
+
+      } else if (doc.type === "notice") {
+        const mkChks=(items,vals)=>items.map((l,k)=>"<div class='chk'>"+(vals[k]==="oui"?"☑":"☐")+" "+l+"</div>").join("");
+        body="<div class='g2'>"
+          +"<div class='f'><b>Chantier :</b><span>"+(data.chantier||"")+"</span></div>"
+          +"<div class='f'><b>Nom :</b><span>"+(data.nom||"")+"</span></div>"
+          +"<div class='f'><b>Poste :</b><span>"+(data.poste||"")+"</span></div>"
+          +"<div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div>"
+          +"<div class='f'><b>Profondeur max :</b><span>"+(data.profondeur||"")+" m</span></div>"
+          +"</div>"
+          +"<h2>Formation au poste</h2><div class='chk-grid'>"+mkChks(NOTICE_FORMATION,Object.values(data.formation||{}))+"</div>"
+          +"<h2>Risques</h2><div class='chk-grid'>"+mkChks(NOTICE_RISQUES,Object.values(data.risques||{}))+"</div>"
+          +(data.commentaires?"<div style='font-size:9px;border:1px solid #ccc;padding:4px;margin-top:4px'>"+data.commentaires+"</div>":"")
+          +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px'>"
+          +"<div style='font-size:10px;font-weight:bold'>Responsable : "+(data.respNom||"")+"</div>"
+          +"<div style='font-size:10px;font-weight:bold'>Salarié : "+(data.salNom||"")+"</div>"
+          +"</div>";
+
+      } else if (doc.type === "accueil") {
+        const mkChks=(items,vals)=>items.map((l,k)=>"<div class='chk'>"+(vals[k]?"☑":"☐")+" "+l+"</div>").join("");
+        const evalRows=ACCUEIL_EVAL.map((l,k)=>{const v=(data.evaluation&&data.evaluation[k])||"";return "<tr><td>"+l+"</td><td>"+(v==="mauvais"?"●":"○")+"</td><td>"+(v==="moyen"?"●":"○")+"</td><td>"+(v==="bon"?"●":"○")+"</td><td>"+(v==="tres_bon"?"●":"○")+"</td></tr>";}).join("");
+        body="<div class='g2'>"
+          +"<div class='f'><b>Chantier :</b><span>"+(data.chantier||"")+"</span></div>"
+          +"<div class='f'><b>Nom :</b><span>"+(data.nom||"")+" "+(data.prenom||"")+"</span></div>"
+          +"<div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div>"
+          +"</div>"
+          +"<h2>A. Risques</h2><div class='chk-grid'>"+mkChks(ACCUEIL_RISQUES,Object.values(data.risques||{}))+"</div>"
+          +"<h2>B. Engagements</h2><div class='chk-grid'>"+mkChks(ACCUEIL_ENG,Object.values(data.engagements||{}))+"</div>"
+          +"<h2>C. Évaluation</h2>"
+          +"<table><thead><tr><th>Critère</th><th>Mauvais</th><th>Moyen</th><th>Bon</th><th>Très bon</th></tr></thead><tbody>"+evalRows+"</tbody></table>"
+          +"<div style='font-size:10px'>Reconduire : "+(data.continuer||"—")+"</div>";
+      }
+
+      const pageBreak = i > 0 ? "<div class='page-break'></div>" : "";
+      sections.push(pageBreak
+        + "<div class='logo'><span class='logo-box'>BONNA TP</span><span style='color:#888;font-size:9px'>"+date+"</span></div>"
+        + "<div class='doc-title'>"+labels2[doc.type]+(doc.nom?" — "+doc.nom:"")+(doc.chantier&&doc.chantier!=="—"?" · "+doc.chantier:"")+"</div>"
+        + "<h1>"+labels2[doc.type]+"</h1>"
+        + body);
+    }
+
+    const htmlOut = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Export BONNA TP - "+docsToExport.length+" documents</title><style>"+css+"</style></head><body>"+sections.join("")+"</body></html>";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([htmlOut], {type:"text/html;charset=utf-8"}));
+    a.download = "Export_BONNATP_"+docsToExport.length+"docs_"+new Date().toISOString().slice(0,10)+".html";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
   };
 
   const icons = { securite: "🤿", notice: "📋", accueil: "🛡️" };
@@ -1177,19 +1255,63 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
 
       {!chantierOuvert && view === "tous" && (
         <>
-          <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto"}}>
+          <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto"}}>
             {["tous","securite","notice","accueil"].map(f=>(
               <button key={f} style={s.filterChip(filter===f)} onClick={()=>setFilter(f)}>
                 {f==="tous"?"Tous":labels[f]}
               </button>
             ))}
           </div>
+
+          {filtered.length > 0 && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,padding:"8px 10px",background:C.blueLight,borderRadius:9}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <input type="checkbox"
+                  checked={selectedDocs.size === filtered.length && filtered.length > 0}
+                  onChange={e => setSelectedDocs(e.target.checked ? new Set(filtered.map(d=>d.id)) : new Set())}
+                  style={{width:16,height:16,accentColor:C.blueMid,cursor:"pointer"}}
+                />
+                <span style={{fontSize:12,color:C.blue,fontWeight:600}}>
+                  {selectedDocs.size > 0 ? selectedDocs.size+" sélectionné"+(selectedDocs.size>1?"s":"") : "Tout sélectionner"}
+                </span>
+              </div>
+              {selectedDocs.size > 0 && (
+                <button
+                  onClick={async ()=>{
+                    setExportingPDF(true);
+                    try {
+                      await exportSelectionPDF(filtered.filter(d=>selectedDocs.has(d.id)));
+                    } finally {
+                      setExportingPDF(false);
+                    }
+                  }}
+                  disabled={exportingPDF}
+                  style={{background:C.accent,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",opacity:exportingPDF?0.7:1}}>
+                  {exportingPDF ? "⏳ Export…" : "📄 Exporter "+selectedDocs.size+" doc"+(selectedDocs.size>1?"s":"")+" en PDF"}
+                </button>
+              )}
+            </div>
+          )}
+
           {filtered.length===0?(
             <div style={{textAlign:"center",padding:"40px 20px",color:C.gray}}>
               <div style={{fontSize:36,marginBottom:10}}>📂</div>
               <p style={{fontSize:13}}>Aucun document.</p>
             </div>
-          ):filtered.map(doc=>renderDocCard(doc))}
+          ):filtered.map(doc=>(
+            <div key={doc.id} style={{display:"flex",alignItems:"center",gap:6}}>
+              <input type="checkbox"
+                checked={selectedDocs.has(doc.id)}
+                onChange={e=>{
+                  const s=new Set(selectedDocs);
+                  e.target.checked ? s.add(doc.id) : s.delete(doc.id);
+                  setSelectedDocs(s);
+                }}
+                style={{width:16,height:16,accentColor:C.blueMid,cursor:"pointer",flexShrink:0}}
+              />
+              <div style={{flex:1}}>{renderDocCard(doc)}</div>
+            </div>
+          ))}
         </>
       )}
 
