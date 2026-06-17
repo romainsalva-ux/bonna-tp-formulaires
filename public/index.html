@@ -1545,7 +1545,45 @@ function App() {
     }else if(type==="notice"){
       const sr=data.sigResponsable?"<img src='"+data.sigResponsable+"' style='height:50px;display:block;border:1px solid #ccc;margin-top:3px'/>":" <div style='height:50px;border:1px solid #ccc;margin-top:3px;background:#fafafa'></div>";
       const ss=data.sigSalarie?"<img src='"+data.sigSalarie+"' style='height:50px;display:block;border:1px solid #ccc;margin-top:3px'/>":"<div style='height:50px;border:1px solid #ccc;margin-top:3px;background:#fafafa'></div>";
-      body="<h1>NOTICE DE POSTE HYPERBARE — 035_QSE_FO</h1><div class='g2'><div class='f'><b>Chantier :</b><span>"+(data.chantier||"")+"</span></div><div class='f'><b>Nom :</b><span>"+(data.nom||"")+"</span></div><div class='f'><b>Prénom :</b><span>"+(data.prenom||"")+"</span></div><div class='f'><b>Poste :</b><span>"+(data.poste||"")+"</span></div><div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div><div class='f'><b>Profondeur max :</b><span>"+(data.profondeur||"")+" m</span></div></div><h2>Signatures</h2><div style='display:grid;grid-template-columns:1fr 1fr;gap:12px'><div><div style='font-size:10px;font-weight:bold'>Responsable : "+(data.respNom||"")+"</div>"+sr+"</div><div><div style='font-size:10px;font-weight:bold'>Salarié : "+(data.salNom||"")+"</div>"+ss+"</div></div>";
+      // Construire les sections Oui/Non
+      const mkChecks=(items,vals)=>items.map((l,i)=>"<tr><td style='font-size:9px'>"+l+"</td><td style='text-align:center;width:30px'>"+(vals[i]==="oui"?"☑":"☐")+"</td><td style='text-align:center;width:30px'>"+(vals[i]==="non"?"☑":"☐")+"</td></tr>").join("");
+      const mkCheckHeader=()=>"<thead><tr><th style='text-align:left'>Élément</th><th style='width:30px'>Oui</th><th style='width:30px'>Non</th></tr></thead>";
+      body="<h1>NOTICE DE POSTE HYPERBARE — 035_QSE_FO</h1>"
+        +"<div class='g2'>"
+        +"<div class='f'><b>Chantier :</b><span>"+(data.chantier||"")+"</span></div>"
+        +"<div class='f'><b>Date arrivée :</b><span>"+(data.dateArrivee||"")+"</span></div>"
+        +"<div class='f'><b>Nom :</b><span>"+(data.nom||"")+"</span></div>"
+        +"<div class='f'><b>Prénom :</b><span>"+(data.prenom||"")+"</span></div>"
+        +"<div class='f'><b>Poste :</b><span>"+(data.poste||"")+"</span></div>"
+        +"<div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div>"
+        +"<div class='f'><b>Profondeur max :</b><span>"+(data.profondeur||"")+" m</span></div>"
+        +"<div class='f'><b>Type plongée :</b><span>"+(data.plongeeType||"")+"</span></div>"
+        +"<div class='f'><b>Gaz fond :</b><span>"+(data.gazFond||"")+"</span></div>"
+        +"<div class='f'><b>Gaz palier :</b><span>"+(data.gazPalier||"")+"</span></div>"
+        +"</div>"
+        +"<h2>Contrôles préalables</h2>"
+        +"<table>"+mkCheckHeader()+"<tbody>"
+        +mkChecks(["1. Aptitude médicale et restrictions","2. Habilitations nécessaires au chantier","3. Sauveteur Secouriste du Travail"],[data.ctrl1,data.ctrl2,data.ctrl3])
+        +"</tbody></table>"
+        +"<h2>Formation au poste de travail</h2>"
+        +"<table>"+mkCheckHeader()+"<tbody>"
+        +mkChecks(NOTICE_FORMATION,Object.values(data.formation||{}))
+        +"</tbody></table>"
+        +"<h2>Risques et moyens de prévention</h2>"
+        +"<table>"+mkCheckHeader()+"<tbody>"
+        +mkChecks(NOTICE_RISQUES,Object.values(data.risques||{}))
+        +"</tbody></table>"
+        +"<h2>Définition de fonction</h2>"
+        +"<table>"+mkCheckHeader()+"<tbody>"
+        +mkChecks(NOTICE_DEF,Object.values(data.definition||{}))
+        +"</tbody></table>"
+        +"<h2>Commentaires</h2>"
+        +"<div style='border:1px solid #ccc;min-height:30px;padding:6px;font-size:10px'>"+(data.commentaires||"")+"</div>"
+        +"<h2>Signatures</h2>"
+        +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px'>"
+        +"<div><div style='font-size:10px;font-weight:bold'>Responsable : "+(data.respNom||"")+"</div><div style='font-size:9px;color:#888'>"+(data.dateSign||"")+"</div>"+sr+"</div>"
+        +"<div><div style='font-size:10px;font-weight:bold'>Salarié : "+(data.salNom||"")+"</div>"+ss+"</div>"
+        +"</div>";
     }else{
       const viergeURI=await loadImageAsDataURI(RISQUE_IMG_VIERGE);
       const corrURI=await loadImageAsDataURI(RISQUE_IMG_CORRECTION);
