@@ -1595,6 +1595,8 @@ function VuePenibilite({ docs }) {
 // ─── VUE CARNET PLONGÉE ──────────────────────────────────────────────────────
 function VueCarnetPlongee({ docs }) {
   const [openDiver,setOpenDiver]=useState(null);
+  const [exportingDiver,setExportingDiver]=useState(null);
+
   const plongees=docs.filter(d=>d.type==="securite").flatMap(fiche=>{
     const data=fiche.data||{};
     return (data.operateurs||[]).flatMap(op=>{
@@ -1609,9 +1611,164 @@ function VueCarnetPlongee({ docs }) {
   const divers=Object.keys(byNom).sort();
   const totalMin=(arr)=>arr.reduce((s,p)=>{const d=parseFloat(p.duree);return s+(isNaN(d)?0:d);},0);
   const fmtPaliers=(p)=>{const pts=[];if(p.p12)pts.push("12m:"+p.p12);if(p.p9)pts.push("9m:"+p.p9);if(p.p6)pts.push("6m:"+p.p6);if(p.p3)pts.push("3m:"+p.p3);return pts.length?pts.join(" · "):"—";};
+
+  const exportCarnetPDF = (nom, arr) => {
+    setExportingDiver(nom);
+    const date = new Date().toLocaleDateString("fr-FR");
+    const nb = arr.length;
+    const tMin = totalMin(arr);
+    const profMax = Math.max(...arr.map(p=>p.prof));
+    const profMoy = (arr.reduce((s,p)=>s+p.prof,0)/nb).toFixed(1);
+
+    const rows = arr.slice().sort((a,b)=>a.date.localeCompare(b.date)).map((p,i)=>
+      "<tr>"
+      +"<td style='text-align:center'>"+(i+1)+"</td>"
+      +"<td style='font-family:monospace'>"+p.date+"</td>"
+      +"<td>"+p.site+"</td>"
+      +"<td style='text-align:center;font-weight:bold'>"+p.prof+" m</td>"
+      +"<td style='text-align:center'>"+(p.tpsFond||"—")+"</td>"
+      +"<td style='text-align:center'>"+(p.duree||"—")+"</td>"
+      +"<td style='font-size:9px'>"+fmtPaliers(p)+"</td>"
+      +"<td>"+(p.gaz||"—")+"</td>"
+      +"<td>"+(p.methode||"—")+"</td>"
+      +"</tr>"
+    ).join("");
+
+    const css = "body{font-family:Arial,sans-serif;font-size:10px;padding:15px;margin:0}"
+      +"h1{font-size:14px;color:#1a3a6e;border-bottom:2px solid #1a3a6e;padding-bottom:5px;margin-bottom:10px}"
+      +"h2{font-size:11px;background:#1a3a6e;color:#fff;padding:4px 9px;margin:10px 0 6px}"
+      +".stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}"
+      +".stat{border:2px solid #2356a8;border-radius:6px;padding:8px;text-align:center}"
+      +".sv{font-size:20px;font-weight:bold;color:#e85d1a;line-height:1}"
+      +".sl{font-size:9px;color:#666;text-transform:uppercase;margin-top:2px}"
+      +"table{width:100%;border-collapse:collapse;font-size:9px}"
+      +"th{background:#2356a8;color:#fff;padding:4px 6px;text-align:left;border:1px solid #ccc}"
+      +"td{border:1px solid #ccc;padding:3px 6px}"
+      +"tr:nth-child(even)td{background:#f4f5f7}"
+      +".tfoot td{background:#1a3a6e;color:#fff;font-weight:bold;padding:5px 6px;border:1px solid #2356a8}"
+      +".logo{display:flex;align-items:center;gap:9px;margin-bottom:8px}"
+      +".logo-box{background:#e85d1a;color:#fff;font-weight:bold;padding:3px 9px;font-size:12px}"
+      +"@media print{@page{margin:10mm}}";
+
+    const html2 = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Carnet "+nom+"</title><style>"+css+"</style></head><body>"
+      +"<div class='logo'><span class='logo-box'>BONNA TP</span><span style='color:#888;font-size:10px'>"+date+"</span></div>"
+      +"<h1>📘 CARNET DE PLONGÉE — "+nom.toUpperCase()+"</h1>"
+      +"<div class='stats'>"
+      +"<div class='stat'><div class='sv'>"+nb+"</div><div class='sl'>Plongées</div></div>"
+      +"<div class='stat'><div class='sv'>"+profMax+"m</div><div class='sl'>Prof. max</div></div>"
+      +"<div class='stat'><div class='sv'>"+profMoy+"m</div><div class='sl'>Prof. moy.</div></div>"
+      +"<div class='stat'><div class='sv'>"+tMin+"</div><div class='sl'>Min totales</div></div>"
+      +"</div>"
+      +"<h2>REGISTRE DES PLONGÉES</h2>"
+      +"<table><thead><tr><th>N°</th><th>Date</th><th>Site</th><th>Prof.</th><th>Tps fond</th><th>Durée</th><th>Paliers</th><th>Gaz</th><th>Méthode</th></tr></thead>"
+      +"<tbody>"+rows+"</tbody>"
+      +"<tfoot><tr class='tfoot'><td colspan='3' style='text-align:right'>TOTAL :</td><td colspan='6'>"+nb+" plongée"+(nb>1?"s":"")+" · "+tMin+" min totales</td></tr></tfoot>"
+      +"</table>"
+      +"<div style='margin-top:14px;background:#e8eef8;border-left:3px solid #2356a8;padding:7px 10px;font-size:9px'>"
+      +"Ce carnet de plongée a été généré automatiquement depuis l'application BONNA TP — Formulaires Terrain.<br/>"
+      +"Il récapitule l'ensemble des plongées enregistrées dans les Fiches de Sécurité pour ce plongeur."
+      +"</div>"
+      +"<div style='margin-top:10px;background:#fff3e8;border-left:3px solid #e85d1a;padding:6px 9px;font-size:9px'>"
+      +"📱 iPhone : bouton Partager → Imprimer ou Enregistrer en PDF"
+      +"</div>"
+      +"</body></html>";
+
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([html2],{type:"text/html;charset=utf-8"}));
+    a.download="Carnet_"+nom.replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".html";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>{URL.revokeObjectURL(a.href);setExportingDiver(null);},1000);
+  };
+
+  const exportCarnetExcel = (nom, arr) => {
+    const XLSX = window.XLSX_LIB;
+    if (!XLSX) { alert("Chargement Excel en cours, réessayez dans quelques secondes."); return; }
+    setExportingDiver("xls_"+nom);
+
+    const sorted = arr.slice().sort((a,b)=>a.date.localeCompare(b.date));
+    const nb = sorted.length;
+    const tMin = totalMin(sorted);
+    const profMax = Math.max(...sorted.map(p=>p.prof));
+    const profMoy = (sorted.reduce((s,p)=>s+p.prof,0)/nb).toFixed(1);
+    const dateExport = new Date().toLocaleDateString("fr-FR");
+
+    // Feuille 1 : Registre des plongées
+    const rows = [
+      ["BONNA TP — CARNET DE PLONGÉE"],
+      ["Plongeur : " + nom],
+      ["Exporté le : " + dateExport],
+      [],
+      ["STATISTIQUES"],
+      ["Nombre de plongées", nb],
+      ["Profondeur maximale (m)", profMax],
+      ["Profondeur moyenne (m)", parseFloat(profMoy)],
+      ["Temps total (min)", tMin],
+      [],
+      ["N°","Date","Site / Chantier","Profondeur (m)","Tps fond (min)","Durée totale (min)","Palier 12m (min)","Palier 9m (min)","Palier 6m (min)","Palier 3m (min)","Gaz respiré","Méthode"],
+      ...sorted.map((p,i)=>[
+        i+1, p.date, p.site, p.prof,
+        p.tpsFond ? parseFloat(p.tpsFond) : "",
+        p.duree ? parseFloat(p.duree) : "",
+        p.p12 ? parseFloat(p.p12) : "",
+        p.p9 ? parseFloat(p.p9) : "",
+        p.p6 ? parseFloat(p.p6) : "",
+        p.p3 ? parseFloat(p.p3) : "",
+        p.gaz || "", p.methode || ""
+      ]),
+      [],
+      ["TOTAL", "", "", "", "", tMin]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Mise en forme colonnes
+    ws["!cols"] = [
+      {wch:4},{wch:12},{wch:25},{wch:14},{wch:14},{wch:16},
+      {wch:14},{wch:13},{wch:13},{wch:13},{wch:14},{wch:12}
+    ];
+
+    // Fusionner le titre
+    ws["!merges"] = [
+      {s:{r:0,c:0},e:{r:0,c:11}},
+      {s:{r:1,c:0},e:{r:1,c:11}},
+      {s:{r:2,c:0},e:{r:2,c:11}},
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Carnet " + nom.slice(0,20));
+
+    // Feuille 2 : Synthèse mensuelle
+    const byMonth = {};
+    sorted.forEach(p=>{
+      const m = p.date ? p.date.slice(0,7) : "—";
+      if(!byMonth[m]) byMonth[m] = [];
+      byMonth[m].push(p);
+    });
+    const synthRows = [
+      ["SYNTHÈSE MENSUELLE — " + nom],
+      [],
+      ["Mois","Nb plongées","Prof. moy (m)","Tps fond total (min)","Durée totale (min)"],
+      ...Object.entries(byMonth).sort().map(([m, ps])=>[
+        m,
+        ps.length,
+        parseFloat((ps.reduce((s,p)=>s+p.prof,0)/ps.length).toFixed(1)),
+        ps.reduce((s,p)=>s+(parseFloat(p.tpsFond)||0),0),
+        ps.reduce((s,p)=>s+(parseFloat(p.duree)||0),0),
+      ]),
+      [],
+      ["TOTAL", nb, parseFloat(profMoy), "", tMin]
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(synthRows);
+    ws2["!cols"] = [{wch:12},{wch:14},{wch:14},{wch:20},{wch:16}];
+    XLSX.utils.book_append_sheet(wb, ws2, "Synthèse mensuelle");
+
+    XLSX.writeFile(wb, "Carnet_" + nom.replace(/\s+/g,"_") + "_" + new Date().toISOString().slice(0,10) + ".xlsx");
+    setTimeout(()=>setExportingDiver(null), 800);
+  };
+
   return (
     <div style={s.view}>
-      <div style={s.infoBanner}><strong>📘 Carnet de plongée individuel</strong></div>
+      <div style={s.infoBanner}><strong>📘 Carnet de plongée individuel</strong><br/>Cliquez sur 📄 PDF ou 📊 Excel pour exporter le carnet d'un plongeur.</div>
       {divers.length===0?(
         <div style={{textAlign:"center",padding:"36px 20px",color:C.gray}}>
           <div style={{fontSize:36,marginBottom:8}}>📘</div>
@@ -1621,14 +1778,31 @@ function VueCarnetPlongee({ docs }) {
         const arr=byNom[nom].slice().sort((a,b)=>b.date.localeCompare(a.date));
         const nb=arr.length,tMin=totalMin(arr),profMax=Math.max(...arr.map(p=>p.prof));
         const open=openDiver===nom;
+        const isExporting=exportingDiver===nom;
         return (
           <div key={nom} style={{...s.card,marginBottom:10}}>
-            <div onClick={()=>setOpenDiver(open?null:nom)} style={{padding:"12px 14px",cursor:"pointer"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontWeight:700,fontSize:14}}>🤿 {nom}</div>
-                <div style={{color:C.blueMid,fontSize:13}}>{open?"▾":"▸"}</div>
+            <div style={{padding:"12px 14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <div onClick={()=>setOpenDiver(open?null:nom)} style={{fontWeight:700,fontSize:14,cursor:"pointer",flex:1}}>
+                  🤿 {nom}
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <button
+                    onClick={e=>{e.stopPropagation();exportCarnetPDF(nom,arr);}}
+                    disabled={!!exportingDiver}
+                    style={{background:C.blue,color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",opacity:exportingDiver===nom?0.7:1,display:"flex",alignItems:"center",gap:4}}>
+                    {exportingDiver===nom?"⏳":"📄"} {exportingDiver===nom?"Export…":"PDF"}
+                  </button>
+                  <button
+                    onClick={e=>{e.stopPropagation();exportCarnetExcel(nom,arr);}}
+                    disabled={!!exportingDiver}
+                    style={{background:"#1a7a4a",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer",opacity:exportingDiver==="xls_"+nom?0.7:1,display:"flex",alignItems:"center",gap:4}}>
+                    {exportingDiver==="xls_"+nom?"⏳":"📊"} {exportingDiver==="xls_"+nom?"Export…":"Excel"}
+                  </button>
+                  <div onClick={()=>setOpenDiver(open?null:nom)} style={{color:C.blueMid,fontSize:13,cursor:"pointer",padding:"0 4px"}}>{open?"▾":"▸"}</div>
+                </div>
               </div>
-              <div style={{display:"flex",gap:14,fontSize:11,color:C.gray,marginTop:5}}>
+              <div onClick={()=>setOpenDiver(open?null:nom)} style={{display:"flex",gap:14,fontSize:11,color:C.gray,cursor:"pointer"}}>
                 <span><strong style={{color:C.text,fontFamily:"monospace",fontSize:13}}>{nb}</strong> plongée{nb>1?"s":""}</span>
                 <span>Total <strong style={{color:C.text,fontFamily:"monospace"}}>{tMin} min</strong></span>
                 <span>Max <strong style={{color:C.text,fontFamily:"monospace"}}>{profMax} m</strong></span>
