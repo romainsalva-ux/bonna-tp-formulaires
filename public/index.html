@@ -1458,10 +1458,9 @@ function App() {
       const rows=await res.json();
       if(!Array.isArray(rows)){const l=loadDocs();if(l.length>0)setDocs(l);return;}
       const remote=rows.filter(r=>r&&(r.payload||r.type)).map(r=>{const b=r.payload||r;return{...b,id:r.id||b.id,savedAt:r.saved_at||b.savedAt};});
-      const local=loadDocs();
-      const rIds=new Set(remote.map(d=>String(d.id)));
-      const merged=[...remote,...local.filter(d=>!rIds.has(String(d.id)))];
-      setDocs(merged);saveDocs(merged);setLastSync(new Date());
+      // NE PAS fusionner avec le localStorage — Supabase est la source de vérité
+      // Les docs locaux orphelins (hors ligne) sont ignorés si Supabase répond
+      setDocs(remote);saveDocs(remote);setLastSync(new Date());
     }catch(e){console.error("Sync:",e);const l=loadDocs();if(l.length>0)setDocs(l);}
     finally{setSyncing(false);}
   };
