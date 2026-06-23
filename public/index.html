@@ -227,29 +227,11 @@ const sbFetch = (path, opts={}) => {
   });
 };
 
-const loadDocs = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"[]"); } catch{ return []; } };
+const loadDocs = () => []; // Supabase = source de vérité, pas de cache localStorage
 const saveDocs = (docs) => {
-  // Supabase est la source de vérité — localStorage sert juste de cache offline
-  // Ne garder que les 100 derniers docs pour éviter le quota exceeded
-  try {
-    const toSave = docs.slice(0, 100);
-    const json = JSON.stringify(toSave);
-    // Si >4MB, ne pas sauvegarder (localStorage ~5MB max)
-    if (json.length > 4 * 1024 * 1024) {
-      console.warn("Cache trop volumineux, sauvegarde ignorée");
-      return;
-    }
-    localStorage.setItem(LS_KEY, json);
-  } catch(e) {
-    // Quota exceeded : vider le cache et réessayer avec moins de docs
-    console.warn("localStorage quota exceeded, nettoyage...");
-    try {
-      localStorage.removeItem(LS_KEY);
-      localStorage.setItem(LS_KEY, JSON.stringify(docs.slice(0, 20)));
-    } catch(e2) {
-      console.warn("localStorage inutilisable");
-    }
-  }
+  // localStorage désactivé — Supabase est la seule source de vérité
+  // On vide l'ancien cache s'il existe pour libérer de l'espace
+  try { localStorage.removeItem(LS_KEY); } catch(e) {}
 };
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
@@ -1890,6 +1872,14 @@ function VueCarnetPlongee({ docs }) {
 
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 function App() {
+  // Vider l'ancien cache localStorage au démarrage
+  useEffect(()=>{
+    try {
+      localStorage.removeItem("bonna_docs_v2");
+      localStorage.removeItem("bonna_docs");
+    } catch(e) {}
+  }, []);
+
   useEffect(()=>{
     if(window.XLSX_LIB)return;
     const sc=document.createElement("script");
@@ -1914,23 +1904,17 @@ function App() {
   const showToast=(msg)=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
 
   const fetchDocs=async()=>{
-    if(!supabaseReady()){const l=loadDocs();if(l.length>0)setDocs(l);return;}
+    if(!supabaseReady()){return;} // attendre que Supabase soit prêt
     try{
       setSyncing(true);
       const res=await sbFetch("/documents?order=saved_at.desc&limit=500&select=*");
-      if(!res.ok){const l=loadDocs();if(l.length>0)setDocs(l);return;}
+      if(!res.ok){console.warn("Supabase KO:",res.status);return;}
       const rows=await res.json();
-      if(!Array.isArray(rows)){const l=loadDocs();if(l.length>0)setDocs(l);return;}
+      if(!Array.isArray(rows)){console.warn("Réponse invalide Supabase");return;}
       const remote=rows.filter(r=>r&&(r.payload||r.type)).map(r=>{const b=r.payload||r;return{...b,id:r.id||b.id,savedAt:r.saved_at||b.savedAt};});
       // NE PAS fusionner avec le localStorage — Supabase est la source de vérité
       // Les docs locaux orphelins (hors ligne) sont ignorés si Supabase répond
       setDocs(remote);
-      // Écrire dans localStorage seulement si les données ont changé
-      try { saveDocs(remote); } catch(e) {
-        console.warn("localStorage plein, nettoyage...");
-        localStorage.removeItem("bonna_docs_v2");
-        try { saveDocs(remote); } catch(e2) { console.warn("localStorage inutilisable:", e2); }
-      }
       setLastSync(new Date());
     }catch(e){console.error("Sync:",e);const l=loadDocs();if(l.length>0)setDocs(l);}
     finally{setSyncing(false);}
@@ -1960,7 +1944,7 @@ function App() {
     const nd={id:Date.now(),type,label:labels[type],chantier:data.site||data.chantier||"—",date:data.date||data.dateArrivee||new Date().toISOString().slice(0,10),nom:data.nom?(data.nom+" "+(data.prenom||"")).trim():"",data,savedAt:new Date().toISOString()};
     if(supabaseReady()){
       try{await sbFetch("/documents",{method:"POST",prefer:"return=minimal",body:JSON.stringify({id:nd.id,type:nd.type,chantier:nd.chantier,date:nd.date,nom:nd.nom,saved_at:nd.savedAt,payload:nd})});await fetchDocs();showToast("✓ Sauvegardé et synchronisé");}
-      catch(e){console.error("Save:",e);const u=[...docs,nd];saveDocs(u);setDocs(u);showToast("✓ Sauvegardé localement");}
+      catch(e){console.error("Save:",e);const u=[...docs,nd];setDocs(u);showToast("✓ Sauvegardé (hors ligne, sync au retour connexion)");}
     }else{const u=[...docs,nd];saveDocs(u);setDocs(u);showToast("✓ Sauvegardé");}
   };
 
@@ -1970,8 +1954,8 @@ function App() {
     const ud={id:editingDocId,type,label:labels[type],chantier:data.site||data.chantier||"—",date:data.date||data.dateArrivee||new Date().toISOString().slice(0,10),nom:data.nom?(data.nom+" "+(data.prenom||"")).trim():"",data,savedAt:new Date().toISOString()};
     if(supabaseReady()){
       try{await sbFetch("/documents?id=eq."+editingDocId,{method:"PATCH",prefer:"return=minimal",body:JSON.stringify({chantier:ud.chantier,date:ud.date,nom:ud.nom,saved_at:ud.savedAt,payload:ud})});await fetchDocs();showToast("✓ Modifié et synchronisé");}
-      catch(e){const u=docs.map(d=>d.id===editingDocId?ud:d);saveDocs(u);setDocs(u);showToast("✓ Modifié");}
-    }else{const u=docs.map(d=>d.id===editingDocId?ud:d);saveDocs(u);setDocs(u);showToast("✓ Modifié");}
+      catch(e){const u=docs.map(d=>d.id===editingDocId?ud:d);setDocs(u);showToast("✓ Modifié");}
+    }else{const u=docs.map(d=>d.id===editingDocId?ud:d);setDocs(u);showToast("✓ Modifié");}
     setEditingDocId(null);
   };
 
