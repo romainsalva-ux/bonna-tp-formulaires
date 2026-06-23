@@ -1001,16 +1001,32 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
   });
 
   const saveChantiers = async (list) => {
+    // Mise à jour locale immédiate
     setChantiers(list);
     localStorage.setItem("bonna_chantiers", JSON.stringify(list));
-    if (supabaseReady()) {
-      try {
-        await sbFetch("/chantiers?nom=neq.___", { method: "DELETE", prefer: "return=minimal" });
-        if (list.length > 0) {
-          await sbFetch("/chantiers", { method: "POST", prefer: "return=minimal", body: JSON.stringify(list.map(nom => ({ nom }))) });
-        }
-      } catch(e) { console.error("Sync chantiers:", e); }
-    }
+    if (!supabaseReady()) return;
+    try {
+      // Récupérer les chantiers existants sur Supabase
+      const res = await sbFetch("/chantiers?select=id,nom&limit=500");
+      const existing = res.ok ? await res.json() : [];
+      const existingNoms = new Set((existing||[]).map(r=>r.nom));
+      const listSet = new Set(list);
+
+      // Ajouter les nouveaux chantiers
+      const toAdd = list.filter(nom => !existingNoms.has(nom));
+      if (toAdd.length > 0) {
+        await sbFetch("/chantiers", {
+          method: "POST", prefer: "return=minimal",
+          body: JSON.stringify(toAdd.map(nom => ({ nom })))
+        });
+      }
+
+      // Supprimer les chantiers retirés
+      const toDelete = (existing||[]).filter(r => !listSet.has(r.nom));
+      for (const row of toDelete) {
+        await sbFetch("/chantiers?id=eq." + row.id, { method: "DELETE" });
+      }
+    } catch(e) { console.error("Sync chantiers:", e); }
   };
 
   const creerChantier = () => {
@@ -1875,16 +1891,20 @@ function App() {
   useEffect(()=>{fetchDocs();const iv=setInterval(fetchDocs,8000);return()=>clearInterval(iv);},[]);
 
   useEffect(()=>{
-    const fc=()=>{
-      if(!supabaseReady())return;
-      sbFetch("/chantiers?order=nom.asc&limit=200").then(r=>r.ok?r.json():[]).then(rows=>{
-        if(Array.isArray(rows)&&rows.length>0){
-          const noms=rows.map(r=>r.nom).filter(Boolean);
-          setChantiers(prev=>{const m=[...new Set([...prev,...noms])];localStorage.setItem("bonna_chantiers",JSON.stringify(m));return m;});
-        }
-      }).catch(()=>{});
+    const fc=async()=>{
+      if(!supabaseReady()) return;
+      try {
+        const res = await sbFetch("/chantiers?order=nom.asc&limit=200");
+        if(!res.ok) return;
+        const rows = await res.json();
+        if(!Array.isArray(rows)) return;
+        // Supabase = source de vérité pour les chantiers
+        const noms = rows.map(r=>r.nom).filter(Boolean);
+        setChantiers(noms);
+        localStorage.setItem("bonna_chantiers", JSON.stringify(noms));
+      } catch(e) { console.error("Fetch chantiers:", e); }
     };
-    fc();const iv=setInterval(fc,30000);return()=>clearInterval(iv);
+    fc(); const iv=setInterval(fc,8000); return()=>clearInterval(iv);
   },[]);
 
   const saveDoc=async(type,data)=>{
