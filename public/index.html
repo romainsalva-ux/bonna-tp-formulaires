@@ -1626,8 +1626,20 @@ function VueCarnetPlongee({ docs }) {
       return [{nom:op.equipe.trim(),date:data.date||fiche.date||"—",site:data.site||fiche.chantier||"—",prof,duree:op.duree||"",tpsFond:op.tpsFond||"",p12:op.p12||"",p9:op.p9||"",p6:op.p6||"",p3:op.p3||"",gaz:data.melange||"",methode:data.methode||""}];
     });
   });
+  // Normaliser le nom : trim, supprimer virgules, unifier la casse
+  const normNom = (n) => n.trim().replace(/,/g," ").replace(/\s+/g," ").toUpperCase();
+  // Grouper par nom normalisé, garder le nom d'affichage le plus propre
+  const byNomNorm={};
+  plongees.forEach(p=>{
+    const key=normNom(p.nom);
+    if(!byNomNorm[key]){byNomNorm[key]={displayNom:p.nom,plongees:[]};}
+    // Préférer le nom sans virgule comme nom d'affichage
+    if(!p.nom.includes(",") && byNomNorm[key].displayNom.includes(","))
+      byNomNorm[key].displayNom=p.nom;
+    byNomNorm[key].plongees.push(p);
+  });
   const byNom={};
-  plongees.forEach(p=>{if(!byNom[p.nom])byNom[p.nom]=[];byNom[p.nom].push(p);});
+  Object.values(byNomNorm).forEach(g=>{byNom[g.displayNom]=g.plongees;});
   const divers=Object.keys(byNom).sort();
   const totalMin=(arr)=>arr.reduce((s,p)=>{const d=parseFloat(p.duree);return s+(isNaN(d)?0:d);},0);
   const fmtPaliers=(p)=>{const pts=[];if(p.p12)pts.push("12m:"+p.p12);if(p.p9)pts.push("9m:"+p.p9);if(p.p6)pts.push("6m:"+p.p6);if(p.p3)pts.push("3m:"+p.p3);return pts.length?pts.join(" · "):"—";};
