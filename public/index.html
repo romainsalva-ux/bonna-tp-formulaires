@@ -228,7 +228,29 @@ const sbFetch = (path, opts={}) => {
 };
 
 const loadDocs = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"[]"); } catch{ return []; } };
-const saveDocs = (docs) => localStorage.setItem(LS_KEY, JSON.stringify(docs));
+const saveDocs = (docs) => {
+  // Supabase est la source de vérité — localStorage sert juste de cache offline
+  // Ne garder que les 100 derniers docs pour éviter le quota exceeded
+  try {
+    const toSave = docs.slice(0, 100);
+    const json = JSON.stringify(toSave);
+    // Si >4MB, ne pas sauvegarder (localStorage ~5MB max)
+    if (json.length > 4 * 1024 * 1024) {
+      console.warn("Cache trop volumineux, sauvegarde ignorée");
+      return;
+    }
+    localStorage.setItem(LS_KEY, json);
+  } catch(e) {
+    // Quota exceeded : vider le cache et réessayer avec moins de docs
+    console.warn("localStorage quota exceeded, nettoyage...");
+    try {
+      localStorage.removeItem(LS_KEY);
+      localStorage.setItem(LS_KEY, JSON.stringify(docs.slice(0, 20)));
+    } catch(e2) {
+      console.warn("localStorage inutilisable");
+    }
+  }
+};
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const s = {
@@ -1902,7 +1924,14 @@ function App() {
       const remote=rows.filter(r=>r&&(r.payload||r.type)).map(r=>{const b=r.payload||r;return{...b,id:r.id||b.id,savedAt:r.saved_at||b.savedAt};});
       // NE PAS fusionner avec le localStorage — Supabase est la source de vérité
       // Les docs locaux orphelins (hors ligne) sont ignorés si Supabase répond
-      setDocs(remote);saveDocs(remote);setLastSync(new Date());
+      setDocs(remote);
+      // Écrire dans localStorage seulement si les données ont changé
+      try { saveDocs(remote); } catch(e) {
+        console.warn("localStorage plein, nettoyage...");
+        localStorage.removeItem("bonna_docs_v2");
+        try { saveDocs(remote); } catch(e2) { console.warn("localStorage inutilisable:", e2); }
+      }
+      setLastSync(new Date());
     }catch(e){console.error("Sync:",e);const l=loadDocs();if(l.length>0)setDocs(l);}
     finally{setSyncing(false);}
   };
@@ -1920,10 +1949,10 @@ function App() {
         // Supabase = source de vérité pour les chantiers
         const noms = rows.map(r=>r.nom).filter(Boolean);
         setChantiers(noms);
-        localStorage.setItem("bonna_chantiers", JSON.stringify(noms));
+        try { localStorage.setItem("bonna_chantiers", JSON.stringify(noms)); } catch(e) {}
       } catch(e) { console.error("Fetch chantiers:", e); }
     };
-    fc(); const iv=setInterval(fc,8000); return()=>clearInterval(iv);
+    fc(); const iv=setInterval(fc,15000); return()=>clearInterval(iv);
   },[]);
 
   const saveDoc=async(type,data)=>{
