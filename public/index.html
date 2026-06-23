@@ -1060,6 +1060,8 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
       localStorage.setItem("bonna_docs_v2", JSON.stringify(saved.map(d => d.id === docId ? { ...d, chantier: nomChantier } : d)));
     }
     setShowMoveModal(null);
+    // Resync immédiat pour les autres appareils
+    if(supabaseReady()) setTimeout(fetchDocs, 500);
   };
 
   // ── Export PDF multi-documents — COMPLET ──
@@ -1613,12 +1615,16 @@ function VueCarnetPlongee({ docs }) {
   const [openDiver,setOpenDiver]=useState(null);
   const [exportingDiver,setExportingDiver]=useState(null);
 
+  const seenKeys=new Set();
   const plongees=docs.filter(d=>d.type==="securite").flatMap(fiche=>{
     const data=fiche.data||{};
-    return (data.operateurs||[]).flatMap(op=>{
+    return (data.operateurs||[]).flatMap((op,opIdx)=>{
       if(!op.equipe||!op.equipe.trim())return[];
       const prof=parseFloat(op.prof);
       if(isNaN(prof)||prof<=0)return[];
+      const key=String(fiche.id)+"_"+opIdx;
+      if(seenKeys.has(key))return[];
+      seenKeys.add(key);
       return [{nom:op.equipe.trim(),date:data.date||fiche.date||"—",site:data.site||fiche.chantier||"—",prof,duree:op.duree||"",tpsFond:op.tpsFond||"",p12:op.p12||"",p9:op.p9||"",p6:op.p6||"",p3:op.p3||"",gaz:data.melange||"",methode:data.methode||""}];
     });
   });
