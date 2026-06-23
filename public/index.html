@@ -1520,7 +1520,7 @@ function VuePenibilite({ docs }) {
     const data=fiche.data||{};
     return (data.operateurs||[]).flatMap(op=>{
       const prof=parseFloat(op.prof);
-      if(!op.equipe||isNaN(prof)||prof<=12) return [];
+      if(!op.equipe||isNaN(prof)||prof<12) return []; // >= 12m selon décret C2P
       return [{nom:op.equipe,profondeur:prof,tpsFond:parseFloat(op.tpsFond)||null,duree:parseFloat(op.duree)||null,date:data.date||fiche.date||"—",site:data.site||fiche.chantier||"—",methode:data.methode||""}];
     });
   });
@@ -1564,7 +1564,7 @@ function VuePenibilite({ docs }) {
     <div style={s.view}>
       <div style={s.infoBanner}>
         <strong>Facteur C2P — Travaux subaquatiques</strong><br/>
-        Seuil : 60 plongées/an à profondeur &gt; 12 m (décret n°2015-1888).
+        Seuil : 60 plongées/an à profondeur ≥ 12 m (décret n°2015-1888).
       </div>
       <div style={s.statGrid}>
         {[[total,"Total plongées >12m",C.accent],[Object.keys(byNom).length,"Plongeurs",C.blueMid],[total?profMoy+"m":"—","Prof. moyenne",C.success],[nbAlert,"Seuil atteint",C.danger]].map(([v,l,color],i)=>(
