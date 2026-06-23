@@ -984,7 +984,7 @@ function VueAccueil({ data, setData, onSave, onUpdate, onExportPDF, editingDocId
 
 
 // ─── VUE ARCHIVE ─────────────────────────────────────────────────────────────
-function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
+function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantiers }) {
   const [view, setView] = useState("chantiers");
   const [chantierOuvert, setChantierOuvert] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -996,9 +996,7 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF }) {
   const [showMoveModal, setShowMoveModal] = useState(null);
   const [selectedDocs, setSelectedDocs] = useState(new Set());
   const [exportingPDF, setExportingPDF] = useState(false);
-  const [chantiers, setChantiers] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("bonna_chantiers") || "[]"); } catch { return []; }
-  });
+  // chantiers et setChantiers passés en props depuis App
 
   const saveChantiers = async (list) => {
     // Mise à jour locale immédiate
@@ -1871,6 +1869,9 @@ function App() {
   const [notice,setNotice]=useState(emptyNotice);
   const [accueil,setAccueil]=useState(emptyAccueil);
   const [docs,setDocs]=useState(()=>loadDocs());
+  const [chantiers,setChantiers]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("bonna_chantiers")||"[]");}catch{return[];}
+  });
   const [syncing,setSyncing]=useState(false);
   const [lastSync,setLastSync]=useState(null);
   const [toast,setToast]=useState("");
@@ -2068,7 +2069,7 @@ function App() {
       {tab==="securite"&&<VueSecurite data={securite} setData={setSecurite} onSave={()=>saveDoc("securite",securite)} onUpdate={()=>updateDoc("securite",securite)} onExportPDF={()=>genPDF("securite",securite)} editingDocId={editingDocId} onClear={()=>{setSecurite(emptySecurite());setEditingDocId(null);}}/>}
       {tab==="notice"&&<VueNotice data={notice} setData={setNotice} onSave={()=>saveDoc("notice",notice)} onUpdate={()=>updateDoc("notice",notice)} onExportPDF={()=>genPDF("notice",notice)} editingDocId={editingDocId} onClear={()=>{setNotice(emptyNotice());setEditingDocId(null);}}/>}
       {tab==="accueil"&&<VueAccueil data={accueil} setData={setAccueil} onSave={()=>saveDoc("accueil",accueil)} onUpdate={()=>updateDoc("accueil",accueil)} onExportPDF={()=>genPDF("accueil",accueil)} editingDocId={editingDocId} onClear={()=>{setAccueil(emptyAccueil());setEditingDocId(null);}}/>}
-      {tab==="archive"&&<VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)}/>}
+      {tab==="archive"&&<VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)} chantiers={chantiers} setChantiers={setChantiers}/>}
       {tab==="penibilite"&&<VuePenibilite docs={docs}/>}
       {tab==="carnet"&&<VueCarnetPlongee docs={docs}/>}
       <Toast message={toast}/>
