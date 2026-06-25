@@ -1725,11 +1725,16 @@ function VueCarnetPlongee({ docs }) {
       +"</div>"
       +"</body></html>";
 
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob([html2],{type:"text/html;charset=utf-8"}));
-    a.download="Carnet_"+nom.replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".html";
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    setTimeout(()=>{URL.revokeObjectURL(a.href);setExportingDiver(null);},1000);
+    // Impression directe PDF via iframe
+    const pf=document.createElement("iframe");
+    pf.style.cssText="position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
+    document.body.appendChild(pf);
+    pf.onload=()=>{
+      try{pf.contentWindow.focus();pf.contentWindow.print();}
+      catch(e){const w=window.open("","_blank");if(w){w.document.write(html2);w.document.close();w.focus();w.print();}}
+      setTimeout(()=>{document.body.removeChild(pf);setExportingDiver(null);},2000);
+    };
+    pf.srcdoc=html2;
   };
 
   const exportCarnetExcel = (nom, arr) => {
