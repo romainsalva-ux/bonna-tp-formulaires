@@ -1207,12 +1207,28 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantie
         + body);
     }
 
-    const htmlOut = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Export BONNA TP - "+docsToExport.length+" documents</title><style>"+css+"</style></head><body>"+sections.join("")+"</body></html>";
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([htmlOut], {type:"text/html;charset=utf-8"}));
-    a.download = "Export_BONNATP_"+docsToExport.length+"docs_"+new Date().toISOString().slice(0,10)+".html";
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+    const htmlOut = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Export BONNA TP</title><style>"+css+"</style></head><body>"+sections.join("")+"</body></html>";
+
+    // Ouvrir dans une iframe cachée et déclencher l'impression PDF
+    const printFrame = document.createElement("iframe");
+    printFrame.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
+    document.body.appendChild(printFrame);
+
+    printFrame.onload = () => {
+      try {
+        printFrame.contentWindow.focus();
+        printFrame.contentWindow.print();
+      } catch(e) {
+        // Fallback : ouvrir dans un nouvel onglet
+        const w = window.open("", "_blank");
+        if(w) { w.document.write(htmlOut); w.document.close(); w.focus(); w.print(); }
+      }
+      setTimeout(() => {
+        document.body.removeChild(printFrame);
+      }, 2000);
+    };
+
+    printFrame.srcdoc = htmlOut;
   };
   const icons = { securite: "🤿", notice: "📋", accueil: "🛡️" };
   const labels = { securite: "Fiche Sécurité", notice: "Notice Poste", accueil: "Accueil QSE" };
@@ -2058,12 +2074,17 @@ function App() {
     }
     const lbl={securite:"Fiche_Securite",notice:"Notice_Poste",accueil:"Accueil_QSE"};
     const out="<!DOCTYPE html><html><head><meta charset='UTF-8'><title>"+lbl[type]+"</title><style>"+css+"</style></head><body><div class='logo'><span class='logo-box'>BONNA TP</span><span style='color:#888;font-size:10px'>"+date+"</span></div>"+body+"<div class='note'>📱 iPhone : Partager → Imprimer ou Enregistrer en PDF</div></body></html>";
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob([out],{type:"text/html;charset=utf-8"}));
-    a.download=lbl[type]+"_"+(data.date||date.replace(/\//g,"-"))+".html";
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-    showToast("✓ PDF téléchargé");
+    // Impression directe en PDF via iframe
+    const pf=document.createElement("iframe");
+    pf.style.cssText="position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
+    document.body.appendChild(pf);
+    pf.onload=()=>{
+      try{pf.contentWindow.focus();pf.contentWindow.print();}
+      catch(e){const w=window.open("","_blank");if(w){w.document.write(out);w.document.close();w.focus();w.print();}}
+      setTimeout(()=>document.body.removeChild(pf),2000);
+    };
+    pf.srcdoc=out;
+    showToast("✓ Impression PDF lancée");
   };
 
   const tabs=[{id:"securite",num:"FO-SEC",label:"Fiche Sécurité"},{id:"notice",num:"035_QSE",label:"Notice Poste"},{id:"accueil",num:"043_QSE",label:"Accueil QSE"},{id:"archive",num:"ARCHIVE",label:"Documents"},{id:"penibilite",num:"C2P",label:"Pénibilité"},{id:"carnet",num:"CARNET",label:"Carnet Plongée"}];
