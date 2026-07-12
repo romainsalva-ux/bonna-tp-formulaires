@@ -177,7 +177,7 @@ const emptyNotice = () => ({
   formation: Object.fromEntries(NOTICE_FORMATION.map((_,i)=>[i,""])),
   risques: Object.fromEntries(NOTICE_RISQUES.map((_,i)=>[i,""])),
   definition: Object.fromEntries(NOTICE_DEF.map((_,i)=>[i,""])),
-  profondeur:"", supportType:"", plongeeType:"", gazFond:"", gazPalier:"",
+  profondeur:"", supportType:[], plongeeType:[], gazFond:[], gazPalier:[],
   respNom:"", salNom:"", dateSign:"", commentaires:"",
   sigResponsable:"", sigSalarie:"",
 });
@@ -329,6 +329,29 @@ function Textarea({ value, onChange, placeholder="" }) {
 function RadioPill({ label, selected, onClick }) {
   return <span style={s.radioPill(selected)} onClick={onClick}>{label}</span>;
 }
+function MultiSelect({ value, onChange, options, color }) {
+  const vals = Array.isArray(value) ? value : (value ? [value] : []);
+  const toggle = (opt) => {
+    const next = vals.includes(opt) ? vals.filter(x=>x!==opt) : [...vals, opt];
+    onChange(next);
+  };
+  const col = color || C.blueMid;
+  const bg = color === C.accent ? "#fff3e8" : C.blueLight;
+  return (
+    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:4}}>
+      {options.map(opt=>{
+        const on = vals.includes(opt);
+        return (
+          <button key={opt} type="button" onClick={()=>toggle(opt)}
+            style={{padding:"6px 14px",borderRadius:20,border:"2px solid "+(on?col:C.grayLight),background:on?bg:"#fff",color:on?col:C.gray,fontFamily:"inherit",fontSize:12,fontWeight:on?700:400,cursor:"pointer",transition:"all 0.15s"}}>
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function RadioGroup({ name, options, value, onChange }) {
   return <div style={s.radioGroup}>{options.map(o=><RadioPill key={o.value||o} label={o.label||o} selected={value===(o.value||o)} onClick={()=>onChange(o.value||o)} />)}</div>;
 }
@@ -805,13 +828,13 @@ function VueNotice({ data, setData, onSave, onUpdate, onExportPDF, editingDocId,
       </SectionCard>
       <SectionCard title="Plongée — détails techniques">
         <div style={s.row2}>
-          <Field label="Type de support"><RadioGroup value={data.supportType} onChange={v=>u("supportType",v)} options={["Quai","Navire"]} /></Field>
+          <Field label="Type de support"><MultiSelect value={data.supportType} onChange={v=>u("supportType",v)} options={["Quai","Navire"]} /></Field>
           <Field label="Profondeur max (m)"><Input type="number" value={data.profondeur} onChange={v=>u("profondeur",v)} /></Field>
         </div>
-        <Field label="Type de plongée"><RadioGroup value={data.plongeeType} onChange={v=>u("plongeeType",v)} options={["Narguilé","Bouteille","Inspection","Dérogation"]} /></Field>
+        <Field label="Type de plongée"><MultiSelect value={data.plongeeType} onChange={v=>u("plongeeType",v)} options={["Narguilé","Bouteille","Inspection","Dérogation"]} /></Field>
         <div style={s.row2}>
-          <Field label="Gaz fond"><RadioGroup value={data.gazFond} onChange={v=>u("gazFond",v)} options={["Air","Mélange"]} /></Field>
-          <Field label="Gaz palier"><RadioGroup value={data.gazPalier} onChange={v=>u("gazPalier",v)} options={["Air","Mélange","O2"]} /></Field>
+          <Field label="Gaz fond"><MultiSelect value={data.gazFond} onChange={v=>u("gazFond",v)} options={["Air","Mélange"]} /></Field>
+          <Field label="Gaz palier"><MultiSelect value={data.gazPalier} onChange={v=>u("gazPalier",v)} options={["Air","Mélange","O2"]} color={C.accent} /></Field>
         </div>
       </SectionCard>
       <SectionCard title="Signatures">
@@ -1138,8 +1161,8 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantie
           +"<div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div>"
           +"<div class='f'><b>Profondeur max :</b><span>"+(data.profondeur||"")+" m</span></div>"
           +"<div class='f'><b>Type plongée :</b><span>"+(data.plongeeType||"")+"</span></div>"
-          +"<div class='f'><b>Support :</b><span>"+(data.supportType||"")+"</span></div>"
-          +"<div class='f'><b>Gaz fond :</b><span>"+(data.gazFond||"")+"</span></div>"
+          +"<div class='f'><b>Support :</b><span>"+(Array.isArray(data.supportType)?data.supportType.join(", "):(data.supportType||""))+"</span></div>"
+          +"<div class='f'><b>Gaz fond :</b><span>"+(Array.isArray(data.gazFond)?data.gazFond.join(", "):(data.gazFond||""))+"</span></div>"
           +"<div class='f'><b>Gaz palier :</b><span>"+(data.gazPalier||"")+"</span></div>"
           +"</div>"
           +"<h2>Contrôles préalables</h2>"
@@ -2008,7 +2031,16 @@ function App() {
 
   const editDoc=(doc)=>{
     if(doc.type==="securite")setSecurite({...emptySecurite(),...doc.data,operateurs:(doc.data.operateurs||[]).map(op=>({...emptyOp(),...op}))});
-    if(doc.type==="notice")setNotice({...emptyNotice(),...doc.data});
+    if(doc.type==="notice"){
+      const d=doc.data||{};
+      const toArr=(v)=>Array.isArray(v)?v:(v?[v]:[]);
+      setNotice({...emptyNotice(),...d,
+        supportType:toArr(d.supportType),
+        plongeeType:toArr(d.plongeeType),
+        gazFond:toArr(d.gazFond),
+        gazPalier:toArr(d.gazPalier),
+      });
+    }
     if(doc.type==="accueil")setAccueil({...emptyAccueil(),...doc.data});
     setEditingDocId(doc.id);setTab(doc.type);
     showToast("Formulaire chargé — modifiez puis cliquez Modifier");
@@ -2038,7 +2070,7 @@ function App() {
         +"<div class='f'><b>Type salarié :</b><span>"+(data.typeSalarie||"")+"</span></div>"
         +"<div class='f'><b>Profondeur max :</b><span>"+(data.profondeur||"")+" m</span></div>"
         +"<div class='f'><b>Type plongée :</b><span>"+(data.plongeeType||"")+"</span></div>"
-        +"<div class='f'><b>Gaz fond :</b><span>"+(data.gazFond||"")+"</span></div>"
+        +"<div class='f'><b>Gaz fond :</b><span>"+(Array.isArray(data.gazFond)?data.gazFond.join(", "):(data.gazFond||""))+"</span></div>"
         +"<div class='f'><b>Gaz palier :</b><span>"+(data.gazPalier||"")+"</span></div>"
         +"</div>"
         +"<h2>Contrôles préalables</h2>"
