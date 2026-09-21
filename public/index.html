@@ -1547,8 +1547,29 @@ function VuePenibilite({ docs }) {
   });
   const total=plongees.length;
   const profMoy=total?(plongees.reduce((s,p)=>s+p.profondeur,0)/total).toFixed(1):"—";
+  // Normalisation : regrouper "Julien MARAIS" et "MARAIS Julien" ensemble
+  const normNomKey2 = (n) => {
+    if (!n) return "";
+    return n.trim().replace(/[,;]/g," ").replace(/\s+/g," ")
+      .toUpperCase().split(" ").filter(Boolean).sort().join("|");
+  };
+  const formatNom2 = (n) => {
+    if (!n) return n;
+    const words = n.trim().replace(/[,;]/g," ").replace(/\s+/g," ")
+      .split(" ").filter(Boolean);
+    return words.map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(" ");
+  };
+  const byNomNorm2={};
+  plongees.forEach(p=>{
+    const key=normNomKey2(p.nom);
+    const fmt2=formatNom2(p.nom);
+    if(!byNomNorm2[key]){byNomNorm2[key]={displayNom:fmt2,arr:[]};}
+    if(fmt2.length > byNomNorm2[key].displayNom.length)
+      byNomNorm2[key].displayNom=fmt2;
+    byNomNorm2[key].arr.push(p);
+  });
   const byNom={};
-  plongees.forEach(p=>{if(!byNom[p.nom])byNom[p.nom]=[];byNom[p.nom].push(p);});
+  Object.values(byNomNorm2).forEach(g=>{byNom[g.displayNom]=g.arr;});
   const nbAlert=Object.values(byNom).filter(a=>a.length>=60).length;
 
   const exportCSV=()=>{
@@ -1669,16 +1690,37 @@ function VueCarnetPlongee({ docs }) {
       return [{nom:op.equipe.trim(),date:data.date||fiche.date||"—",site:data.site||fiche.chantier||"—",prof,duree:op.duree||"",tpsFond:op.tpsFond||"",p12:op.p12||"",p9:op.p9||"",p6:op.p6||"",p3:op.p3||"",gaz:data.melange||"",methode:data.methode||""}];
     });
   });
-  // Normaliser le nom : trim, supprimer virgules, unifier la casse
-  const normNom = (n) => n.trim().replace(/,/g," ").replace(/\s+/g," ").toUpperCase();
-  // Grouper par nom normalisé, garder le nom d'affichage le plus propre
+  // Normalisation robuste : trier les mots alphabétiquement
+  // "Julien MARAIS" et "MARAIS Julien" → même clé "JULIEN|MARAIS"
+  const normNomKey = (n) => {
+    if (!n) return "";
+    const words = n.trim()
+      .replace(/[,;]/g, " ")
+      .replace(/\s+/g, " ")
+      .toUpperCase()
+      .split(" ")
+      .filter(Boolean)
+      .sort();
+    return words.join("|");
+  };
+  // Choisir le meilleur nom d'affichage : Prénom NOM (première lettre maj, reste min)
+  // Formater en "Prénom Nom" avec première lettre en majuscule
+  const formatNom = (n) => {
+    if (!n) return n;
+    const words = n.trim().replace(/[,;]/g," ").replace(/\s+/g," ")
+      .split(" ").filter(Boolean);
+    // Première lettre majuscule, reste minuscule pour chaque mot
+    return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+  };
+  // Grouper par clé normalisée
   const byNomNorm={};
   plongees.forEach(p=>{
-    const key=normNom(p.nom);
-    if(!byNomNorm[key]){byNomNorm[key]={displayNom:p.nom,plongees:[]};}
-    // Préférer le nom sans virgule comme nom d'affichage
-    if(!p.nom.includes(",") && byNomNorm[key].displayNom.includes(","))
-      byNomNorm[key].displayNom=p.nom;
+    const key=normNomKey(p.nom);
+    const fmt=formatNom(p.nom);
+    if(!byNomNorm[key]){byNomNorm[key]={displayNom:fmt,plongees:[]};}
+    // Garder le nom le mieux formaté (le plus long = plus d'info)
+    if(fmt.length > byNomNorm[key].displayNom.length)
+      byNomNorm[key].displayNom=fmt;
     byNomNorm[key].plongees.push(p);
   });
   const byNom={};
