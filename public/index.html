@@ -208,21 +208,37 @@ const supabaseReady = () => !!(getSupabaseUrl() && getSupabaseKey());
 // ── Supabase helpers ──
 const sbFetch = (path, opts={}) => {
   const method = (opts.method || "GET").toUpperCase();
-  const headers = {
-    "apikey": getSupabaseKey(),
-    "Authorization": "Bearer " + getSupabaseKey(),
-  };
-  // Content-Type seulement si on envoie un body
-  if (opts.body) headers["Content-Type"] = "application/json";
-  // Prefer seulement pour GET/POST avec return
-  if (opts.prefer) {
-    headers["Prefer"] = opts.prefer;
-  } else if (method === "GET") {
-    headers["Prefer"] = "return=representation";
+  
+  // Parser le path Supabase style: /documents?id=eq.123&order=saved_at.desc&limit=500
+  const [pathPart, queryStr] = path.split("?");
+  const table = pathPart.replace("/", "");
+  const params = new URLSearchParams(queryStr || "");
+  
+  // Construire les params pour notre proxy
+  const proxyParams = new URLSearchParams();
+  proxyParams.set("table", table);
+  
+  // Parser id=eq.XXX
+  for (const [k, v] of params.entries()) {
+    if (k === "id" && v.startsWith("eq.")) {
+      proxyParams.set("id", v.replace("eq.", ""));
+    } else if (k === "nom" && v.startsWith("neq.")) {
+      proxyParams.set("nom_neq", v.replace("neq.", ""));
+    } else if (k === "order") {
+      proxyParams.set("order", v);
+    } else if (k === "limit") {
+      proxyParams.set("limit", v);
+    } else if (k === "select") {
+      proxyParams.set("select", v);
+    }
   }
-  return fetch(getSupabaseUrl() + "/rest/v1" + path, {
+
+  const headers = {};
+  if (opts.body) headers["Content-Type"] = "application/json";
+  
+  return fetch("/api/db?" + proxyParams.toString(), {
     method,
-    headers: { ...headers, ...(opts.headers||{}) },
+    headers,
     body: opts.body || undefined,
   });
 };
