@@ -203,7 +203,7 @@ const getSupabaseUrl = () => {
   return url;
 };
 const getSupabaseKey = () => ((window.__ENV__ && window.__ENV__.SUPABASE_KEY) || "").trim();
-const supabaseReady = () => !!(getSupabaseUrl() && getSupabaseKey());
+const supabaseReady = () => true; // Proxy /api/db toujours disponible
 
 // ── Supabase helpers ──
 const sbFetch = (path, opts={}) => {
