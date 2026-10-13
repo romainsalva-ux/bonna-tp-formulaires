@@ -203,41 +203,21 @@ const getSupabaseUrl = () => {
   return url;
 };
 const getSupabaseKey = () => ((window.__ENV__ && window.__ENV__.SUPABASE_KEY) || "").trim();
-const supabaseReady = () => true; // Proxy /api/db toujours disponible
+const supabaseReady = () => !!(window.__ENV__ && window.__ENV__.SUPABASE_URL && window.__ENV__.SUPABASE_KEY);
 
 // ── Supabase helpers ──
 const sbFetch = (path, opts={}) => {
-  const method = (opts.method || "GET").toUpperCase();
-  
-  // Parser le path Supabase style: /documents?id=eq.123&order=saved_at.desc&limit=500
-  const [pathPart, queryStr] = path.split("?");
-  const table = pathPart.replace("/", "");
-  const params = new URLSearchParams(queryStr || "");
-  
-  // Construire les params pour notre proxy
-  const proxyParams = new URLSearchParams();
-  proxyParams.set("table", table);
-  
-  // Parser id=eq.XXX
-  for (const [k, v] of params.entries()) {
-    if (k === "id" && v.startsWith("eq.")) {
-      proxyParams.set("id", v.replace("eq.", ""));
-    } else if (k === "nom" && v.startsWith("neq.")) {
-      proxyParams.set("nom_neq", v.replace("neq.", ""));
-    } else if (k === "order") {
-      proxyParams.set("order", v);
-    } else if (k === "limit") {
-      proxyParams.set("limit", v);
-    } else if (k === "select") {
-      proxyParams.set("select", v);
-    }
-  }
-
-  const headers = {};
-  if (opts.body) headers["Content-Type"] = "application/json";
-  
-  return fetch("/api/db?" + proxyParams.toString(), {
-    method,
+  const base = getSupabaseUrl();
+  const key = getSupabaseKey();
+  const prefer = opts.prefer || "";
+  const headers = {
+    "apikey": key,
+    "Authorization": "Bearer " + key,
+    "Content-Type": "application/json",
+  };
+  if (prefer) headers["Prefer"] = prefer;
+  return fetch(base + "/rest/v1" + path, {
+    method: opts.method || "GET",
     headers,
     body: opts.body || undefined,
   });
@@ -2006,7 +1986,9 @@ function App() {
   const showToast=(msg)=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
 
   const fetchDocs=async()=>{
-    if(!supabaseReady()){return;} // attendre que Supabase soit prêt
+    // Attendre que la config soit chargée depuis /api/config
+    if(window.__ENV_PROMISE__) await window.__ENV_PROMISE__;
+    if(!supabaseReady()){console.warn("Supabase non configuré");return;}
     try{
       setSyncing(true);
       const res=await sbFetch("/documents?order=saved_at.desc&limit=500&select=*");
@@ -2026,6 +2008,7 @@ function App() {
 
   useEffect(()=>{
     const fc=async()=>{
+      if(window.__ENV_PROMISE__) await window.__ENV_PROMISE__;
       if(!supabaseReady()) return;
       try {
         const res = await sbFetch("/chantiers?order=nom.asc&limit=200");
