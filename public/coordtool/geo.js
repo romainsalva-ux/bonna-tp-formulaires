@@ -253,6 +253,68 @@
     return { lat: lat, lon: lon };
   }
 
+
+  // ---------- MGRS ----------
+  var MG_COL = ["ABCDEFGH", "JKLMNPQR", "STUVWXYZ"], MG_ROW = "ABCDEFGHJKLMNPQRSTUV", BANDS = "CDEFGHJKLMNPQRSTUVWX";
+  function toMGRS(lat, lon) {
+    if (lat < -80 || lat >= 84) return null;
+    var u = fromWgs("utm", lat, lon), set = ((u.zone - 1) % 6) + 1;
+    var col = MG_COL[(set - 1) % 3].charAt(Math.floor(u.x / 100000) - 1);
+    var row = MG_ROW.charAt((Math.floor(u.y / 100000) + (set % 2 === 0 ? 5 : 0)) % 20);
+    var e = Math.floor(u.x % 100000), n = Math.floor(u.y % 100000);
+    return { zone: u.zone, band: u.band, sq: col + row, e: pad(e, 5), n: pad(n, 5) };
+  }
+  function fromMGRS(zone, band, sq, e, n) {
+    zone = +zone; band = String(band || "").toUpperCase(); sq = String(sq || "").toUpperCase();
+    if (!(zone >= 1 && zone <= 60) || BANDS.indexOf(band) < 0 || sq.length !== 2) throw new Error("MGRS invalide");
+    var set = ((zone - 1) % 6) + 1, ci = MG_COL[(set - 1) % 3].indexOf(sq.charAt(0)), ri = MG_ROW.indexOf(sq.charAt(1));
+    if (ci < 0 || ri < 0) throw new Error("Carré de 100 km invalide");
+    e = String(e || "0"); n = String(n || "0");
+    if (!/^\d{1,5}$/.test(e) || !/^\d{1,5}$/.test(n) || e.length !== n.length) throw new Error("Est/Nord MGRS : même nombre de chiffres (1 à 5)");
+    var f = Math.pow(10, 5 - e.length);
+    var E = (ci + 1) * 100000 + (+e) * f + f / 2 * (f > 1 ? 1 : 0);
+    var N = ((ri - (set % 2 === 0 ? 5 : 0) + 20) % 20) * 100000 + (+n) * f + f / 2 * (f > 1 ? 1 : 0);
+    var bi = BANDS.indexOf(band), south = bi < 10, latMin = -80 + bi * 8;
+    var proj = utmProj(zone, south);
+    var minN = proj.forward(latMin, zone * 6 - 183).y - 100000;
+    while (N < minN) N += 2000000;
+    var g = proj.inverse(E, N);
+    return { lat: g.lat, lon: g.lon };
+  }
+  function parseMGRS(str) {
+    var m = String(str || "").toUpperCase().replace(/\s+/g, "").match(/^(\d{1,2})([C-HJ-NP-X])([A-HJ-NP-Z]{2})(\d*)$/);
+    if (!m || m[4].length % 2) return null;
+    var h = m[4].length / 2;
+    return fromMGRS(m[1], m[2], m[3], m[4].slice(0, h) || "0", m[4].slice(h) || "0");
+  }
+
+  // ---------- Plus Code (Open Location Code) ----------
+  var OLC = "23456789CFGHJMPQRVWX";
+  function toPlusCode(lat, lon) {
+    lat = Math.min(90 - 1e-10, Math.max(-90, lat)); lon = ((lon + 180) % 360 + 360) % 360 - 180;
+    var la = Math.floor(Math.round((lat + 90) * 40000 * 1e6) / 1e6), lo = Math.floor(Math.round((lon + 180) * 32000 * 1e6) / 1e6);
+    var grid = OLC.charAt((la % 5) * 4 + (lo % 4));
+    la = Math.floor(la / 5); lo = Math.floor(lo / 4);
+    var pairs = "";
+    for (var i = 0; i < 5; i++) { pairs = OLC.charAt(la % 20) + OLC.charAt(lo % 20) + pairs; la = Math.floor(la / 20); lo = Math.floor(lo / 20); }
+    return pairs.slice(0, 8) + "+" + pairs.slice(8) + grid;
+  }
+  function fromPlusCode(code) {
+    var c = String(code || "").toUpperCase().replace(/\s/g, "");
+    if (!/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{0,7}$/.test(c)) throw new Error("Plus Code complet attendu (ex. 8FQ6QRMH+4M)");
+    c = c.replace("+", "");
+    var lat = -90, lon = -180, rl = 400, ro = 400;
+    for (var i = 0; i < Math.min(10, c.length); i += 2) {
+      rl /= 20; ro /= 20;
+      lat += OLC.indexOf(c.charAt(i)) * rl; lon += OLC.indexOf(c.charAt(i + 1)) * ro;
+    }
+    for (i = 10; i < c.length; i++) {
+      rl /= 5; ro /= 4; var d = OLC.indexOf(c.charAt(i));
+      lat += Math.floor(d / 4) * rl; lon += (d % 4) * ro;
+    }
+    return { lat: lat + rl / 2, lon: lon + ro / 2 };
+  }
+
   function parseNum(v) {
     if (typeof v === "number") return v;
     var s = String(v || "").replace(/\s/g, "").replace(",", ".");
@@ -262,7 +324,8 @@
   var Geo = {
     SYSTEMS: SYSTEMS, sys: sys, fromWgs: fromWgs, toWgs: toWgs, utmZone: utmZone, utmBand: utmBand,
     bestCC: bestCC, inFrance: inFrance, toDMS: toDMS, toDDM: toDDM, parseAngle: parseAngle,
-    parsePair: parsePair, parseNum: parseNum
+    parsePair: parsePair, parseNum: parseNum,
+    toMGRS: toMGRS, fromMGRS: fromMGRS, parseMGRS: parseMGRS, toPlusCode: toPlusCode, fromPlusCode: fromPlusCode
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Geo; else root.Geo = Geo;
 })(this);
