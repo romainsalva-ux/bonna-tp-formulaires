@@ -2189,6 +2189,9 @@ function App() {
             <span style={s.tabNum(tab===t.id)}>{t.num}</span>{t.label}
           </button>
         ))}
+        <a href="/coordtool/" style={{...s.tabBtn(false),textDecoration:"none",display:"inline-flex",flexDirection:"column",alignItems:"center"}}>
+          <span style={s.tabNum(false)}>GPS</span>CoordTool
+        </a>
       </div>
       {tab==="securite"&&<VueSecurite data={securite} setData={setSecurite} onSave={()=>saveDoc("securite",securite)} onUpdate={()=>updateDoc("securite",securite)} onExportPDF={()=>genPDF("securite",securite)} editingDocId={editingDocId} onClear={()=>{setSecurite(emptySecurite());setEditingDocId(null);}}/>}
       {tab==="notice"&&<VueNotice data={notice} setData={setNotice} onSave={()=>saveDoc("notice",notice)} onUpdate={()=>updateDoc("notice",notice)} onExportPDF={()=>genPDF("notice",notice)} editingDocId={editingDocId} onClear={()=>{setNotice(emptyNotice());setEditingDocId(null);}}/>}
