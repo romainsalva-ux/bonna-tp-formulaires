@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CoordTool">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a3a6e">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="/icon-192.png">
+<title>CoordTool — Convertisseur GPS</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --navy:#1a3a6e; --navy2:#24508f; --orange:#e85d1a; --bg:#f2f4f8; --card:#fff;
+    --text:#1b2433; --muted:#6b7586; --line:#e2e6ee; --ok:#1f9d55; --err:#c62828; --hl:#fff4ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1520; --card:#18202e; --text:#e8edf5; --muted:#93a0b5; --line:#2a3446; --hl:#2e2219; }
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:15px; }
+  body { padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
+  header { background:var(--navy); color:#fff; padding:calc(12px + env(safe-area-inset-top)) 16px 0; position:sticky; top:0; z-index:1000; box-shadow:0 2px 8px rgba(0,0,0,.2); }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .brand .logo { white-space:nowrap; background:var(--orange); font-weight:800; font-family:ui-monospace,monospace; padding:4px 9px; border-radius:6px; font-size:14px; }
+  .brand h1 { font-size:17px; font-weight:700; }
+  .brand small { display:block; font-weight:400; opacity:.7; font-size:11px; }
+  .brand a { white-space:nowrap; margin-left:auto; color:#fff; opacity:.75; font-size:12px; text-decoration:none; }
+  nav { display:flex; gap:4px; margin-top:10px; }
+  nav button { flex:1; background:none; border:none; color:rgba(255,255,255,.65); font:inherit; font-weight:600; font-size:13px; padding:10px 4px; border-bottom:3px solid transparent; cursor:pointer; }
+  nav button.on { color:#fff; border-bottom-color:var(--orange); }
+  main { max-width:760px; margin:0 auto; padding:14px 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin-bottom:10px; font-weight:700; }
+  label.lb { display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
+  input, select, textarea { width:100%; font:inherit; font-size:16px; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 11px; }
+  textarea { font-family:ui-monospace,Menlo,monospace; font-size:14px; min-height:150px; resize:vertical; }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--navy2); outline-offset:-1px; }
+  .row { display:flex; gap:10px; }
+  .row > * { flex:1; min-width:0; }
+  .mt { margin-top:10px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; padding:11px 14px; font:inherit; font-weight:700; font-size:14px; cursor:pointer; background:var(--navy); color:#fff; text-decoration:none; }
+  .btn.alt { background:var(--orange); }
+  .btn.ghost { background:transparent; color:var(--navy2); border:1px solid var(--line); }
+  @media (prefers-color-scheme: dark) { .btn.ghost { color:#9cc0ff; } }
+  .btn:disabled { opacity:.5; }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; }
+  .btns .btn { flex:1 1 auto; }
+  .msg { font-size:13px; margin-top:8px; color:var(--muted); }
+  .msg.err { color:var(--err); } .msg.ok { color:var(--ok); }
+  #map { height:300px; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#dde3ec; }
+  .maptools { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .chip { border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:20px; padding:6px 12px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+  .chip.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .res { border-top:1px solid var(--line); padding:10px 0; display:flex; align-items:center; gap:10px; }
+  .res:first-of-type { border-top:none; padding-top:0; }
+  .res.best { background:var(--hl); margin:0 -14px; padding:10px 14px; }
+  .res .info { flex:1; min-width:0; }
+  .res .nm { font-size:12px; font-weight:700; color:var(--muted); }
+  .res .nm .tag { background:var(--orange); color:#fff; font-size:10px; padding:1px 6px; border-radius:4px; margin-left:4px; }
+  .res .val { font-family:ui-monospace,Menlo,monospace; font-size:15px; margin-top:2px; }
+  .res .val span { white-space:nowrap; margin-right:10px; display:inline-block; }
+  .res .val b { color:var(--muted); font-weight:500; font-size:12px; }
+  .cp { border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:8px; padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; flex-shrink:0; }
+  .cp.done { background:var(--ok); color:#fff; border-color:var(--ok); }
+  details { border-top:1px solid var(--line); padding-top:8px; margin-top:4px; }
+  details summary { cursor:pointer; font-size:13px; font-weight:700; color:var(--navy2); padding:6px 0; }
+  @media (prefers-color-scheme: dark) { details summary { color:#9cc0ff; } }
+  .hidden { display:none !important; }
+  table { width:100%; border-collapse:collapse; font-size:13px; font-family:ui-monospace,Menlo,monospace; }
+  th, td { border-bottom:1px solid var(--line); padding:6px 5px; text-align:left; white-space:nowrap; }
+  th { font-family:system-ui; font-size:11px; text-transform:uppercase; color:var(--muted); }
+  .tblwrap { overflow-x:auto; }
+  .hist { display:flex; align-items:center; gap:10px; border-top:1px solid var(--line); padding:10px 0; }
+  .hist:first-child { border-top:none; }
+  .hist .info { flex:1; min-width:0; cursor:pointer; }
+  .hist .t { font-weight:700; font-size:14px; }
+  .hist .s { font-size:12px; color:var(--muted); font-family:ui-monospace,monospace; }
+  .note { font-size:12px; color:var(--muted); line-height:1.45; }
+  .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translateX(-50%); background:#222c3c; color:#fff; padding:10px 16px; border-radius:20px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:2000; }
+  .toast.on { opacity:1; }
+  .acc { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">BONNA TP</span>
+    <h1>CoordTool<small>Convertisseur de coordonnées GPS</small></h1>
+    <a href="/">← Formulaires</a>
+  </div>
+  <nav>
+    <button data-tab="conv" class="on">Convertir</button>
+    <button data-tab="batch">Par lot</button>
+    <button data-tab="hist">Points</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ CONVERTIR ============ -->
+  <section id="tab-conv">
+    <div class="card">
+      <h2>Saisie</h2>
+      <div class="btns">
+        <button class="btn alt" id="gpsBtn">📍 Ma position GPS</button>
+        <button class="btn ghost" id="pasteBtn">📋 Coller</button>
+      </div>
+      <div class="msg" id="gpsMsg"></div>
+
+      <div class="mt">
+        <label class="lb" for="srcSys">Système d'entrée</label>
+        <select id="srcSys"></select>
+      </div>
+
+      <div id="geoInputs" class="mt">
+        <div class="row">
+          <div><label class="lb" for="inLat">Latitude</label><input id="inLat" inputmode="text" autocomplete="off" placeholder="45.7640 ou 45°45'50&quot;N"></div>
+          <div><label class="lb" for="inLon">Longitude</label><input id="inLon" inputmode="text" autocomplete="off" placeholder="4.8357 ou 4°50'09&quot;E"></div>
+        </div>
+        <div class="note mt">Formats acceptés : décimal (45.764), DMS (45°45'50.4"N), DM (N 45 45.84). O/W/S ou signe « - » pour ouest/sud.</div>
+      </div>
+
+      <div id="projInputs" class="mt hidden">
+        <div class="row">
+          <div><label class="lb" for="inX">X / Est (m)</label><input id="inX" inputmode="decimal" autocomplete="off" placeholder="842000.00"></div>
+          <div><label class="lb" for="inY">Y / Nord (m)</label><input id="inY" inputmode="decimal" autocomplete="off" placeholder="6519000.00"></div>
+        </div>
+        <div class="row mt" id="utmInputs">
+          <div><label class="lb" for="inZone">Zone UTM</label><input id="inZone" type="number" min="1" max="60" value="31"></div>
+          <div><label class="lb" for="inHemi">Hémisphère</label><select id="inHemi"><option value="N">Nord</option><option value="S">Sud</option></select></div>
+        </div>
+      </div>
+
+      <div class="btns mt">
+        <button class="btn" id="convBtn">Convertir</button>
+        <button class="btn ghost" id="swapBtn" title="Inverser X/Y ou lat/lon">⇄ Inverser</button>
+        <button class="btn ghost" id="clearBtn">Effacer</button>
+      </div>
+      <div class="msg" id="convMsg"></div>
+    </div>
+
+    <div class="card" id="mapCard">
+      <h2>Carte <span class="acc">— touchez la carte pour placer un point</span></h2>
+      <div id="map"></div>
+      <div class="maptools">
+        <button class="chip on" data-layer="osm">Plan OSM</button>
+        <button class="chip" data-layer="ign">Plan IGN</button>
+        <button class="chip" data-layer="ortho">Photo aérienne</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="resCard">
+      <h2>Résultats</h2>
+      <div id="results"></div>
+      <div class="row mt">
+        <div><label class="lb" for="prec">Précision (m)</label>
+          <select id="prec"><option value="0">1 m</option><option value="1">0,1 m</option><option value="2" selected>0,01 m</option><option value="3">0,001 m</option></select></div>
+        <div><label class="lb" for="decSep">Séparateur décimal</label>
+          <select id="decSep"><option value=".">Point (.)</option><option value=",">Virgule (,)</option></select></div>
+      </div>
+      <div class="btns mt">
+        <button class="btn" id="saveBtn">⭐ Enregistrer le point</button>
+        <button class="btn ghost" id="shareBtn">↗ Partager</button>
+        <button class="btn ghost" id="copyAllBtn">Tout copier</button>
+      </div>
+      <div class="btns mt">
+        <a class="btn ghost" id="lnkGmaps" target="_blank" rel="noopener">Google Maps</a>
+        <a class="btn ghost" id="lnkWaze" target="_blank" rel="noopener">Waze</a>
+        <a class="btn ghost" id="lnkGeop" target="_blank" rel="noopener">Géoportail</a>
+      </div>
+    </div>
+
+    <div class="card note">
+      <b>Précision :</b> Lambert 93 et CC sont exacts (RGF93 ≡ WGS84 au mètre près). Les projections NTF
+      (Lambert I à IV, II étendu) utilisent la transformation IGN standard à 3 paramètres :
+      précision de 1 à 2 m. Pour un travail topographique de précision centimétrique, utilisez la grille IGN (logiciel Circé).
+    </div>
+  </section>
+
+  <!-- ============ PAR LOT ============ -->
+  <section id="tab-batch" class="hidden">
+    <div class="card">
+      <h2>Conversion par lot</h2>
+      <div class="row">
+        <div><label class="lb" for="bSrc">De</label><select id="bSrc"></select></div>
+        <div><label class="lb" for="bDst">Vers</label><select id="bDst"></select></div>
+      </div>
+      <div class="row mt hidden" id="bUtmSrc">
+        <div><label class="lb" for="bZoneSrc">Zone UTM entrée</label><input id="bZoneSrc" type="number" min="1" max="60" value="31"></div>
+        <div><label class="lb" for="bHemiSrc">Hémisphère</label><select id="bHemiSrc"><option value="N">Nord</option><option value="S">Sud</option></select></div>
+      </div>
+      <div class="row mt hidden" id="bUtmDst">
+        <div><label class="lb" for="bZoneDst">Zone UTM sortie</label><input id="bZoneDst" type="number" min="1" max="60" placeholder="auto"></div>
+        <div></div>
+      </div>
+      <div class="mt">
+        <label class="lb" for="bIn">Points — une ligne par point : <i>nom ; X ; Y</i> ou <i>X ; Y</i> (lat ; lon pour WGS84)</label>
+        <textarea id="bIn" placeholder="P1;842000.12;6519000.45&#10;P2;842105.30;6519210.00&#10;Regard 3	842200	6519400"></textarea>
+      </div>
+      <div class="btns mt">
+        <button class="btn" id="bRun">Convertir</button>
+        <label class="btn ghost" style="cursor:pointer">📂 Importer CSV/TXT<input type="file" id="bFile" accept=".csv,.txt,text/csv,text/plain" class="hidden"></label>
+      </div>
+      <div class="msg" id="bMsg"></div>
+    </div>
+    <div class="card hidden" id="bOutCard">
+      <h2>Résultat</h2>
+      <div class="tblwrap"><table id="bTable"></table></div>
+      <div class="btns mt">
+        <button class="btn" id="bCsv">⬇ Télécharger CSV</button>
+        <button class="btn ghost" id="bCopy">Copier</button>
+        <button class="btn ghost" id="bMap">Voir sur la carte</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ POINTS ============ -->
+  <section id="tab-hist" class="hidden">
+    <div class="card">
+      <h2>Points enregistrés</h2>
+      <div id="histList"></div>
+      <div class="btns mt">
+        <button class="btn" id="hCsv">⬇ Exporter CSV</button>
+        <button class="btn ghost" id="hClear">Tout supprimer</button>
+      </div>
+      <div class="note mt">Les points sont conservés sur cet appareil uniquement.</div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script src="geo.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var S = Geo.SYSTEMS;
+  var current = null; // { lat, lon, alt, acc }
+  var batchRows = [];
+
+  // ---------- Stockage local (tolérant aux erreurs) ----------
+  function load(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  function toast(t) { var el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(function () { el.classList.remove("on"); }, 1800); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  // ---------- Onglets ----------
+  document.querySelectorAll("nav button").forEach(function (b) {
+    b.onclick = function () {
+      document.querySelectorAll("nav button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      ["conv", "batch", "hist"].forEach(function (t) { $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab); });
+      if (b.dataset.tab === "hist") renderHist();
+      if (b.dataset.tab === "conv" && map) setTimeout(function () { map.invalidateSize(); }, 50);
+      save("ct_tab", b.dataset.tab);
+    };
+  });
+
+  // ---------- Listes de systèmes ----------
+  function fillSelect(sel, val) {
+    var groups = {};
+    S.forEach(function (s) { (groups[s.group] = groups[s.group] || []).push(s); });
+    sel.innerHTML = Object.keys(groups).map(function (g) {
+      return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (s) {
+        return '<option value="' + s.id + '">' + esc(s.name) + (s.epsg ? " — EPSG:" + s.epsg : "") + "</option>";
+      }).join("") + "</optgroup>";
+    }).join("");
+    sel.value = val;
+  }
+  fillSelect($("srcSys"), load("ct_src", "wgs84"));
+  fillSelect($("bSrc"), load("ct_bsrc", "l93"));
+  fillSelect($("bDst"), load("ct_bdst", "wgs84"));
+  $("prec").value = load("ct_prec", "2");
+  $("decSep").value = load("ct_sep", ".");
+
+  function updInputs() {
+    var s = Geo.sys($("srcSys").value);
+    $("geoInputs").classList.toggle("hidden", s.type !== "geo");
+    $("projInputs").classList.toggle("hidden", s.type === "geo");
+    $("utmInputs").classList.toggle("hidden", s.type !== "utm");
+    save("ct_src", s.id);
+    if (current) fillInputs();
+  }
+  $("srcSys").onchange = updInputs;
+
+  // ---------- Formatage ----------
+  function sep(str) { return $("decSep").value === "," ? String(str).replace(/\./g, ",") : String(str); }
+  function fm(v) { return sep(v.toFixed(+$("prec").value)); }
+  function fd(v) { return sep(v.toFixed(7)); }
+
+  // ---------- Conversion ----------
+  function readInput() {
+    var s = Geo.sys($("srcSys").value);
+    if (s.type === "geo") {
+      var lat = Geo.parseAngle($("inLat").value), lon = Geo.parseAngle($("inLon").value);
+      if (isNaN(lat) || isNaN(lon)) {
+        var p = Geo.parsePair($("inLat").value);
+        if (p && !$("inLon").value.trim()) return p;
+        throw new Error("Latitude / longitude invalides.");
+      }
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new Error("Latitude entre -90 et 90, longitude entre -180 et 180.");
+      return { lat: lat, lon: lon };
+    }
+    var x = Geo.parseNum($("inX").value), y = Geo.parseNum($("inY").value);
+    if (isNaN(x) || isNaN(y)) throw new Error("X / Y invalides.");
+    var opts = { utmZone: +$("inZone").value, utmSouth: $("inHemi").value === "S" };
+    if (s.type === "utm" && !(opts.utmZone >= 1 && opts.utmZone <= 60)) throw new Error("Zone UTM entre 1 et 60.");
+    var r = Geo.toWgs(s.id, x, y, opts);
+    if (!isFinite(r.lat) || !isFinite(r.lon) || Math.abs(r.lat) > 90) throw new Error("Coordonnées hors du domaine de la projection.");
+    // contrôle de cohérence : X/Y probablement inversés ?
+    if (s.type === "proj" && s.group.indexOf("France") === 0 && !Geo.inFrance(r.lat, r.lon)) {
+      var r2 = Geo.toWgs(s.id, y, x, opts);
+      if (isFinite(r2.lat) && Geo.inFrance(r2.lat, r2.lon)) setMsg("convMsg", "⚠ Point hors de France — X et Y sont peut-être inversés (bouton ⇄).", "err");
+      else setMsg("convMsg", "⚠ Point hors de France — vérifiez le système d'entrée.", "err");
+    }
+    return r;
+  }
+  function setMsg(id, t, cls) { var el = $(id); el.textContent = t || ""; el.className = "msg" + (cls ? " " + cls : ""); }
+
+  function convert(fromMap) {
+    setMsg("convMsg", "");
+    try {
+      var p = readInput();
+      setPoint(p.lat, p.lon, null, !fromMap, true);
+    } catch (e) { setMsg("convMsg", e.message, "err"); }
+  }
+  $("convBtn").onclick = function () { convert(false); };
+  ["inLat", "inLon", "inX", "inY"].forEach(function (id) {
+    $(id).addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); convert(false); } });
+  });
+  $("swapBtn").onclick = function () {
+    var a = $("srcSys").value === "wgs84" ? ["inLat", "inLon"] : ["inX", "inY"];
+    var t = $(a[0]).value; $(a[0]).value = $(a[1]).value; $(a[1]).value = t;
+    convert(false);
+  };
+  $("clearBtn").onclick = function () {
+    ["inLat", "inLon", "inX", "inY"].forEach(function (id) { $(id).value = ""; });
+    current = null; $("resCard").classList.add("hidden"); setMsg("convMsg", ""); setMsg("gpsMsg", "");
+    if (marker) { marker.remove(); marker = null; }
+  };
+
+  function setPoint(lat, lon, extra, pan, keepInputs) {
+    current = { lat: lat, lon: lon };
+    if (extra) for (var k in extra) current[k] = extra[k];
+    if (!keepInputs) fillInputs();
+    renderResults();
+    placeMarker(pan !== false);
+  }
+
+  // remplit les champs de saisie selon le système d'entrée sélectionné
+  function fillInputs() {
+    var s = Geo.sys($("srcSys").value), c = current;
+    if (!c) return;
+    if (s.type === "geo") { $("inLat").value = c.lat.toFixed(7); $("inLon").value = c.lon.toFixed(7); return; }
+    var r = Geo.fromWgs(s.id, c.lat, c.lon);
+    if (s.type === "utm") { $("inZone").value = r.zone; $("inHemi").value = r.south ? "S" : "N"; }
+    $("inX").value = r.x.toFixed(3); $("inY").value = r.y.toFixed(3);
+  }
+
+  function resLine(name, val, copy, best, tag) {
+    return '<div class="res' + (best ? " best" : "") + '"><div class="info"><div class="nm">' + esc(name) + (tag ? '<span class="tag">' + esc(tag) + "</span>" : "") +
+      '</div><div class="val">' + val + '</div></div><button class="cp" data-copy="' + esc(copy) + '">Copier</button></div>';
+  }
+  function xy(r) { return '<span><b>X</b> ' + fm(r.x) + '</span><span><b>Y</b> ' + fm(r.y) + '</span>'; }
+  function xyTxt(r) { return fm(r.x) + " ; " + fm(r.y); }
+
+  function allLines() {
+    var c = current, out = [], lat = c.lat, lon = c.lon, fr = Geo.inFrance(lat, lon);
+    out.push({ n: "WGS84 — degrés décimaux", h: '<span><b>Lat</b> ' + fd(lat) + '</span><span><b>Lon</b> ' + fd(lon) + '</span>', t: fd(lat) + ", " + fd(lon), best: !fr });
+    out.push({ n: "WGS84 — degrés minutes secondes", h: '<span>' + esc(Geo.toDMS(lat, true)) + '</span><span>' + esc(Geo.toDMS(lon, false)) + '</span>', t: Geo.toDMS(lat, true) + " " + Geo.toDMS(lon, false) });
+    out.push({ n: "WGS84 — degrés minutes décimales", h: '<span>' + esc(Geo.toDDM(lat, true)) + '</span><span>' + esc(Geo.toDDM(lon, false)) + '</span>', t: Geo.toDDM(lat, true) + " " + Geo.toDDM(lon, false) });
+    if (c.alt != null) out.push({ n: "Altitude GPS (ellipsoïdale, indicative)", h: sep(c.alt.toFixed(1)) + " m", t: sep(c.alt.toFixed(1)) });
+    var l93 = Geo.fromWgs("l93", lat, lon);
+    out.push({ n: "Lambert 93 — EPSG:2154", h: xy(l93), t: xyTxt(l93), best: fr, tag: fr ? "Officiel" : "" });
+    var bz = Geo.bestCC(lat), cc = Geo.fromWgs("cc" + bz, lat, lon);
+    out.push({ n: "CC" + bz + " — EPSG:" + (3900 + bz), h: xy(cc), t: xyTxt(cc), best: fr, tag: fr ? "Zone conseillée" : "" });
+    var u = Geo.fromWgs("utm", lat, lon);
+    out.push({ n: "UTM WGS84 — zone " + u.zone + (u.band || (u.south ? "S" : "N")) + " (EPSG:" + ((u.south ? 32700 : 32600) + u.zone) + ")",
+      h: '<span><b>E</b> ' + fm(u.x) + '</span><span><b>N</b> ' + fm(u.y) + '</span>', t: u.zone + (u.band || "") + " " + fm(u.x) + " " + fm(u.y) });
+    var l2 = Geo.fromWgs("l2e", lat, lon);
+    out.push({ n: "Lambert II étendu (NTF) — EPSG:27572", h: xy(l2), t: xyTxt(l2) });
+    return out;
+  }
+  function moreLines() {
+    var c = current, out = [];
+    for (var z = 42; z <= 50; z++) { var r = Geo.fromWgs("cc" + z, c.lat, c.lon); out.push({ n: "CC" + z + " — EPSG:" + (3900 + z), h: xy(r), t: xyTxt(r) }); }
+    ["l1", "l2", "l3", "l4"].forEach(function (id) { var s = Geo.sys(id), r = Geo.fromWgs(id, c.lat, c.lon); out.push({ n: s.name + " — EPSG:" + s.epsg, h: xy(r), t: xyTxt(r) }); });
+    var w = Geo.fromWgs("webm", c.lat, c.lon);
+    out.push({ n: "Web Mercator — EPSG:3857", h: xy(w), t: xyTxt(w) });
+    return out;
+  }
+
+  function renderResults() {
+    if (!current) return;
+    var a = allLines(), m = moreLines();
+    var html = a.map(function (l) { return resLine(l.n, l.h, l.t, l.best, l.tag); }).join("");
+    html += '<details' + (load("ct_more", false) ? " open" : "") + ' id="moreDet"><summary>Autres systèmes (toutes zones CC, Lambert I-IV, Web Mercator)</summary>' +
+      m.map(function (l) { return resLine(l.n, l.h, l.t); }).join("") + "</details>";
+    if (current.acc != null) html = '<div class="acc" style="margin-bottom:8px">Précision GPS : ± ' + Math.round(current.acc) + ' m</div>' + html;
+    $("results").innerHTML = html;
+    $("moreDet").ontoggle = function () { save("ct_more", this.open); };
+    $("resCard").classList.remove("hidden");
+    var ll = current.lat.toFixed(6) + "," + current.lon.toFixed(6);
+    $("lnkGmaps").href = "https://www.google.com/maps/search/?api=1&query=" + ll;
+    $("lnkWaze").href = "https://waze.com/ul?ll=" + ll + "&navigate=yes";
+    $("lnkGeop").href = "https://www.geoportail.gouv.fr/carte?c=" + current.lon.toFixed(6) + "," + current.lat.toFixed(6) + "&z=18&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes";
+  }
+  $("prec").onchange = function () { save("ct_prec", this.value); renderResults(); };
+  $("decSep").onchange = function () { save("ct_sep", this.value); renderResults(); };
+
+  function copyText(t) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+    var ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (e) {} ta.remove(); return Promise.resolve();
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest(".cp"); if (!b) return;
+    copyText(b.dataset.copy).then(function () { b.textContent = "✓"; b.classList.add("done"); setTimeout(function () { b.textContent = "Copier"; b.classList.remove("done"); }, 1200); });
+  });
+  function summaryText(name) {
+    return (name ? name + "\n" : "") + allLines().concat(moreLines()).map(function (l) { return l.n + " : " + l.t; }).join("\n");
+  }
+  $("copyAllBtn").onclick = function () { copyText(summaryText()).then(function () { toast("Toutes les coordonnées copiées"); }); };
+  $("shareBtn").onclick = function () {
+    var a = allLines(), t = "Position : " + a[0].t + "\nLambert 93 : " + a.filter(function (l) { return l.n.indexOf("Lambert 93") === 0; })[0].t +
+      "\nhttps://www.google.com/maps/search/?api=1&query=" + current.lat.toFixed(6) + "," + current.lon.toFixed(6);
+    if (navigator.share) navigator.share({ title: "Coordonnées", text: t }).catch(function () {});
+    else copyText(t).then(function () { toast("Copié — prêt à coller"); });
+  };
+
+  // ---------- GPS ----------
+  var watchId = null;
+  $("gpsBtn").onclick = function () {
+    if (!navigator.geolocation) { setMsg("gpsMsg", "Géolocalisation non disponible sur cet appareil.", "err"); return; }
+    if (watchId != null) { stopGps(); return; }
+    setMsg("gpsMsg", "Recherche du signal GPS…");
+    $("gpsBtn").textContent = "■ Arrêter le GPS";
+    var best = null, t0 = Date.now();
+    watchId = navigator.geolocation.watchPosition(function (p) {
+      var c = p.coords;
+      if (!best || c.accuracy <= best.accuracy + 1) {
+        best = c;
+        setPoint(c.latitude, c.longitude, { alt: c.altitude, acc: c.accuracy }, true);
+      }
+      setMsg("gpsMsg", "Précision actuelle : ± " + Math.round(c.accuracy) + " m — meilleure : ± " + Math.round(best.accuracy) + " m" +
+        (best.accuracy <= 5 ? " ✓" : " (patientez pour affiner)"), best.accuracy <= 5 ? "ok" : "");
+      if (best.accuracy <= 3 || Date.now() - t0 > 60000) stopGps();
+    }, function (err) {
+      var m = { 1: "Autorisation refusée — activez la localisation pour ce site.", 2: "Position indisponible.", 3: "Délai dépassé." };
+      setMsg("gpsMsg", m[err.code] || err.message, "err"); stopGps(true);
+    }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+  };
+  function stopGps(keepMsg) {
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    watchId = null; $("gpsBtn").textContent = "📍 Ma position GPS";
+  }
+
+  // ---------- Coller ----------
+  $("pasteBtn").onclick = function () {
+    function handle(t) {
+      t = (t || "").trim();
+      if (!t) return;
+      var p = Geo.parsePair(t);
+      if (p) { $("srcSys").value = "wgs84"; updInputs(); setPoint(p.lat, p.lon, null, true); toast("Coordonnées GPS reconnues"); return; }
+      var nums = t.replace(/(\d),(\d)/g, "$1.$2").match(/\d+(?:\.\d+)?/g);
+      if (nums && nums.length >= 2) {
+        var s = Geo.sys($("srcSys").value);
+        if (s.type === "geo") { $("srcSys").value = guessProj(+nums[0], +nums[1]); updInputs(); }
+        $("inX").value = nums[0]; $("inY").value = nums[1]; convert(false); return;
+      }
+      setMsg("convMsg", "Format non reconnu : " + t.slice(0, 60), "err");
+    }
+    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(handle, function () { handle(prompt("Collez les coordonnées :")); });
+    else handle(prompt("Collez les coordonnées :"));
+  };
+  function guessProj(x, y) {
+    if (x > 1e5 && x < 1.3e6 && y > 6e6 && y < 7.2e6) return "l93";
+    if (x > 1e6 && x < 2.4e6 && y > 1e6 && y < 9.3e6) return "cc" + (41 + Math.floor((y - 200000) / 1e6));
+    if (x > 0 && x < 1.3e6 && y > 1.6e6 && y < 2.7e6) return "l2e";
+    return "l93";
+  }
+
+  // ---------- Carte (Leaflet) ----------
+  var map = null, marker = null, layers = {}, pts = null;
+  function initMap() {
+    if (!window.L) { $("mapCard").querySelector("h2").innerHTML = 'Carte <span class="acc">— indisponible hors connexion</span>'; $("map").classList.add("hidden"); document.querySelector(".maptools").classList.add("hidden"); return; }
+    map = L.map("map", { zoomControl: true }).setView([46.6, 2.5], 5);
+    var att = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+    var ign = function (layer, fmt) {
+      return L.tileLayer("https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=" + layer +
+        "&STYLE=normal&TILEMATRIXSET=PM&FORMAT=" + fmt + "&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}", { maxZoom: 19, maxNativeZoom: 19, attribution: "&copy; IGN" });
+    };
+    layers.osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: att });
+    layers.ign = ign("GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2", "image/png");
+    layers.ortho = ign("ORTHOIMAGERY.ORTHOPHOTOS", "image/jpeg");
+    var cur = load("ct_layer", "osm");
+    layers[cur].addTo(map);
+    document.querySelectorAll("[data-layer]").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.layer === cur);
+      b.onclick = function () {
+        for (var k in layers) map.removeLayer(layers[k]);
+        layers[b.dataset.layer].addTo(map); save("ct_layer", b.dataset.layer);
+        document.querySelectorAll("[data-layer]").forEach(function (x) { x.classList.toggle("on", x === b); });
+      };
+    });
+    map.on("click", function (e) { setMsg("convMsg", ""); setPoint(e.latlng.lat, wrapLon(e.latlng.lng), null, false); });
+    if (current) placeMarker(true);
+  }
+  function wrapLon(l) { return ((l + 540) % 360) - 180; }
+  function placeMarker(pan) {
+    if (!map || !current) return;
+    var ll = [current.lat, current.lon];
+    if (!marker) {
+      marker = L.marker(ll, { draggable: true }).addTo(map);
+      marker.on("dragend", function () { var p = marker.getLatLng(); setPoint(p.lat, wrapLon(p.lng), null, false); });
+    } else marker.setLatLng(ll);
+    if (pan) map.setView(ll, Math.max(map.getZoom(), 16));
+  }
+
+  // ---------- Points enregistrés ----------
+  $("saveBtn").onclick = function () {
+    if (!current) return;
+    var h = load("ct_hist", []);
+    var name = prompt("Nom du point :", "Point " + (h.length + 1));
+    if (name === null) return;
+    h.unshift({ name: name || "Point " + (h.length + 1), lat: current.lat, lon: current.lon, alt: current.alt, acc: current.acc, date: new Date().toISOString() });
+    save("ct_hist", h.slice(0, 500)); toast("Point enregistré");
+  };
+  function renderHist() {
+    var h = load("ct_hist", []);
+    if (!h.length) { $("histList").innerHTML = '<div class="note">Aucun point enregistré. Convertissez une position puis touchez « Enregistrer le point ».</div>'; return; }
+    $("histList").innerHTML = h.map(function (p, i) {
+      var l = Geo.fromWgs("l93", p.lat, p.lon);
+      return '<div class="hist"><div class="info" data-i="' + i + '"><div class="t">' + esc(p.name) + '</div><div class="s">' + p.lat.toFixed(6) + ", " + p.lon.toFixed(6) +
+        "<br>L93 " + l.x.toFixed(2) + " ; " + l.y.toFixed(2) + " · " + new Date(p.date).toLocaleString("fr-FR") + '</div></div><button class="cp" data-del="' + i + '">✕</button></div>';
+    }).join("");
+  }
+  $("histList").addEventListener("click", function (e) {
+    var d = e.target.closest("[data-del]"), o = e.target.closest("[data-i]"), h = load("ct_hist", []);
+    if (d) { e.stopPropagation(); if (confirm("Supprimer « " + h[+d.dataset.del].name + " » ?")) { h.splice(+d.dataset.del, 1); save("ct_hist", h); renderHist(); } return; }
+    if (o) { var p = h[+o.dataset.i]; document.querySelector('nav [data-tab="conv"]').click(); setPoint(p.lat, p.lon, { alt: p.alt, acc: p.acc }, true); }
+  });
+  $("hClear").onclick = function () { if (confirm("Supprimer tous les points enregistrés ?")) { save("ct_hist", []); renderHist(); } };
+  $("hCsv").onclick = function () {
+    var h = load("ct_hist", []); if (!h.length) return;
+    var rows = [["Nom", "Latitude", "Longitude", "Lambert93_X", "Lambert93_Y", "CC_zone", "CC_X", "CC_Y", "Altitude_GPS", "Precision_m", "Date"]];
+    h.forEach(function (p) {
+      var l = Geo.fromWgs("l93", p.lat, p.lon), z = Geo.bestCC(p.lat), c = Geo.fromWgs("cc" + z, p.lat, p.lon);
+      rows.push([p.name, p.lat.toFixed(8), p.lon.toFixed(8), l.x.toFixed(3), l.y.toFixed(3), "CC" + z, c.x.toFixed(3), c.y.toFixed(3), p.alt != null ? p.alt.toFixed(1) : "", p.acc != null ? Math.round(p.acc) : "", p.date]);
+    });
+    download("points_" + new Date().toISOString().slice(0, 10) + ".csv", rows);
+  };
+
+  // ---------- Par lot ----------
+  function updBatch() {
+    $("bUtmSrc").classList.toggle("hidden", $("bSrc").value !== "utm");
+    $("bUtmDst").classList.toggle("hidden", $("bDst").value !== "utm");
+    save("ct_bsrc", $("bSrc").value); save("ct_bdst", $("bDst").value);
+  }
+  $("bSrc").onchange = updBatch; $("bDst").onchange = updBatch; updBatch();
+  $("bIn").value = load("ct_bin", "");
+  $("bIn").oninput = function () { save("ct_bin", this.value); };
+  $("bFile").onchange = function () {
+    var f = this.files[0]; if (!f) return;
+    var r = new FileReader(); r.onload = function () { $("bIn").value = r.result; save("ct_bin", r.result); $("bRun").click(); }; r.readAsText(f);
+    this.value = "";
+  };
+  function splitLine(line) {
+    if (line.indexOf("\t") >= 0) return line.split("\t");
+    if (line.indexOf(";") >= 0) return line.split(";");
+    if (/\d,\d/.test(line) && /\s/.test(line.trim()) && !/,\s/.test(line)) return line.trim().split(/\s+/); // virgule décimale
+    if (line.indexOf(",") >= 0) return line.split(",");
+    return line.trim().split(/\s+/);
+  }
+  $("bRun").onclick = function () {
+    var src = Geo.sys($("bSrc").value), dst = Geo.sys($("bDst").value);
+    var srcOpts = { utmZone: +$("bZoneSrc").value, utmSouth: $("bHemiSrc").value === "S" };
+    var dstZone = +$("bZoneDst").value || undefined;
+    var lines = $("bIn").value.split(/\r?\n/), ok = 0, bad = 0;
+    batchRows = [];
+    lines.forEach(function (line, i) {
+      if (!line.trim()) return;
+      var f = splitLine(line).map(function (s) { return s.trim().replace(/^"|"$/g, ""); }).filter(function (s, j, a) { return s !== "" || j < a.length - 1; });
+      var name, a, b, rest = [];
+      var numIdx = [];
+      f.forEach(function (v, j) { if (src.type === "geo" ? /\d/.test(v) && /^[\d\s.,°'"’′″:+\-NSEWOnsewo]+$/.test(v) && !isNaN(Geo.parseAngle(v)) : !isNaN(Geo.parseNum(v))) numIdx.push(j); });
+      if (numIdx.length < 2) { if (i === 0) return; bad++; batchRows.push({ name: f[0] || "Ligne " + (i + 1), err: "illisible" }); return; }
+      // nom = premier champ non numérique s'il précède les coordonnées
+      if (numIdx[0] > 0) { name = f.slice(0, numIdx[0]).join(" "); a = f[numIdx[0]]; b = f[numIdx[1]]; rest = f.slice(numIdx[1] + 1); }
+      else if (numIdx.length >= 3 && src.type !== "geo" && Number(f[0]) < 1e5 && Number(f[1]) > 1e4) { name = f[0]; a = f[1]; b = f[2]; rest = f.slice(3); }
+      else { name = "P" + (batchRows.length + 1); a = f[numIdx[0]]; b = f[numIdx[1]]; rest = f.slice(numIdx[1] + 1); }
+      try {
+        var w = src.type === "geo" ? { lat: Geo.parseAngle(a), lon: Geo.parseAngle(b) } : Geo.toWgs(src.id, Geo.parseNum(a), Geo.parseNum(b), srcOpts);
+        if (!isFinite(w.lat) || !isFinite(w.lon) || Math.abs(w.lat) > 90) throw new Error("hors domaine");
+        var o = Geo.fromWgs(dst.id, w.lat, w.lon, dst.type === "utm" ? { utmZone: dstZone } : null);
+        batchRows.push({ name: name, inA: a, inB: b, lat: w.lat, lon: w.lon, out: o, rest: rest });
+        ok++;
+      } catch (e) { bad++; batchRows.push({ name: name, err: e.message }); }
+    });
+    var geoOut = dst.type === "geo", prec = +$("prec").value;
+    var head = ["Nom", src.type === "geo" ? "Lat entrée" : "X entrée", src.type === "geo" ? "Lon entrée" : "Y entrée",
+      geoOut ? "Latitude" : (dst.type === "utm" ? "E" : "X"), geoOut ? "Longitude" : (dst.type === "utm" ? "N" : "Y")];
+    if (dst.type === "utm") head.push("Zone");
+    batchRows.head = head;
+    batchRows.forEach(function (r) {
+      if (r.err) { r.cells = [r.name, "", "", "⚠ " + r.err, ""]; return; }
+      r.cells = [r.name, r.inA, r.inB, geoOut ? r.out.lat.toFixed(8) : r.out.x.toFixed(prec), geoOut ? r.out.lon.toFixed(8) : r.out.y.toFixed(prec)];
+      if (dst.type === "utm") r.cells.push(r.out.zone + (r.out.band || ""));
+      r.cells = r.cells.concat(r.rest || []);
+    });
+    $("bTable").innerHTML = "<tr>" + head.map(function (h) { return "<th>" + esc(h) + "</th>"; }).join("") + "</tr>" +
+      batchRows.map(function (r) { return "<tr>" + r.cells.map(function (c) { return "<td>" + esc(sep(c)) + "</td>"; }).join("") + "</tr>"; }).join("");
+    $("bOutCard").classList.toggle("hidden", !batchRows.length);
+    setMsg("bMsg", ok + " point(s) converti(s)" + (bad ? " — " + bad + " ligne(s) en erreur" : "") + " : " + src.name + " → " + dst.name, bad ? "err" : "ok");
+  };
+  function rowsCsv(rows) {
+    return "﻿" + rows.map(function (r) { return r.map(function (c) { c = sep(c == null ? "" : String(c)); return /[;"\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(";"); }).join("\r\n");
+  }
+  function download(name, rows) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([rowsCsv(rows)], { type: "text/csv;charset=utf-8" }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+  function batchTable() { return [batchRows.head].concat(batchRows.map(function (r) { return r.cells; })); }
+  $("bCsv").onclick = function () { download("conversion_" + $("bSrc").value + "_vers_" + $("bDst").value + ".csv", batchTable()); };
+  $("bCopy").onclick = function () { copyText(batchTable().map(function (r) { return r.map(sep).join("\t"); }).join("\n")).then(function () { toast("Tableau copié (collable dans Excel)"); }); };
+  $("bMap").onclick = function () {
+    document.querySelector('nav [data-tab="conv"]').click();
+    if (!map) return;
+    if (pts) pts.remove();
+    pts = L.featureGroup(batchRows.filter(function (r) { return !r.err; }).map(function (r) {
+      return L.circleMarker([r.lat, r.lon], { radius: 6, color: "#e85d1a", weight: 2, fillOpacity: .8 }).bindTooltip(r.name, { permanent: batchRows.length <= 30, direction: "top" })
+        .on("click", function () { setPoint(r.lat, r.lon, null, false); });
+    })).addTo(map);
+    if (pts.getLayers().length) setTimeout(function () { map.invalidateSize(); map.fitBounds(pts.getBounds(), { padding: [30, 30], maxZoom: 18 }); }, 80);
+  };
+
+  // ---------- Démarrage ----------
+  updInputs();
+  var lt = load("ct_tab", "conv");
+  // position passée dans l'URL : ?lat=..&lon=..
+  var q = new URLSearchParams(location.search);
+  var s = document.createElement("script");
+  s.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+  s.onload = s.onerror = function () {
+    initMap();
+    if (q.get("lat") && q.get("lon")) { var la = Geo.parseAngle(q.get("lat")), lo = Geo.parseAngle(q.get("lon")); if (!isNaN(la) && !isNaN(lo)) setPoint(la, lo, null, true); }
+  };
+  document.head.appendChild(s);
+  if (lt !== "conv") document.querySelector('nav [data-tab="' + lt + '"]').click();
+})();
+</script>
+</body>
+</html>
