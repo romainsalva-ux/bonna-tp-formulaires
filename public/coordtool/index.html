@@ -322,6 +322,7 @@
         <a class="chip" id="lnkGmaps" target="_blank" rel="noopener">Google Maps</a>
         <a class="chip" id="lnkWaze" target="_blank" rel="noopener">Waze</a>
         <a class="chip" id="lnkGeop" target="_blank" rel="noopener">Géoportail</a>
+        <a class="chip" id="lnkBoat" target="_blank" rel="noopener">Navionics Boating</a>
       </div>
     </div>
   </div>
@@ -489,7 +490,17 @@
     $("lnkGmaps").href = "https://www.google.com/maps/search/?api=1&query=" + ll;
     $("lnkWaze").href = "https://waze.com/ul?ll=" + ll + "&navigate=yes";
     $("lnkGeop").href = "https://www.geoportail.gouv.fr/carte?c=" + cur.lon.toFixed(6) + "," + cur.lat.toFixed(6) + "&z=18&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes";
+    // Navionics Boating : la clé est le point encodé au format « polyline » (précision 1e-5)
+    $("lnkBoat").href = "https://webapp.navionics.com/#boating@14&key=" + encodeURIComponent(polyline(cur.lat, cur.lon));
     save("ct_last", { lat: cur.lat, lon: cur.lon });
+  }
+  function polyline(lat, lon) {
+    return [lat, lon].map(function (v) {
+      var n = Math.round(v * 1e5), s = "";
+      n = n < 0 ? ~(n << 1) : n << 1;
+      while (n >= 0x20) { s += String.fromCharCode((0x20 | (n & 0x1f)) + 63); n >>= 5; }
+      return s + String.fromCharCode(n + 63);
+    }).join("");
   }
   function setPoint(lat, lon, from, extra) {
     cur = { lat: lat, lon: lon };
