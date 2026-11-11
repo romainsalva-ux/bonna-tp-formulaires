@@ -322,11 +322,12 @@
         <a class="chip" id="lnkGmaps" target="_blank" rel="noopener">Google Maps</a>
         <a class="chip" id="lnkWaze" target="_blank" rel="noopener">Waze</a>
         <a class="chip" id="lnkGeop" target="_blank" rel="noopener">Géoportail</a>
-        <a class="chip" id="lnkBoat" target="_blank" rel="noopener">Navionics Boating</a>
       </div>
     </div>
   </div>
 
+  <button class="bigbtn solid" id="boatBtn" style="background:#0b5fa5"><svg viewBox="0 0 24 24"><path d="M3 17l2 3h14l2-3zM12 3v12M12 4l6 9H12M12 6l-5 7h5"/></svg>Ouvrir dans Navionics Boating</button>
+  <p class="note" style="text-align:center;margin-top:6px">Choisissez « Boating » dans le menu de partage : le point y est importé comme marqueur.</p>
   <button class="bigbtn soft" id="copyAll"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2"/></svg>Copier toutes les coordonnées</button>
   <button class="bigbtn solid" id="saveFav"><svg viewBox="0 0 24 24"><path d="M12 20l-7.5-7.3a4.6 4.6 0 0 1 6.5-6.5l1 1 1-1a4.6 4.6 0 0 1 6.5 6.5z"/></svg>Enregistrer ce point</button>
   <button class="bigbtn txt" id="clearAll"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>Effacer</button>
@@ -338,7 +339,7 @@
 <div class="sheet" id="favSheet"><div class="panel">
   <div class="ph"><h2>Points favoris</h2><button data-close>OK</button></div>
   <div class="grp" id="favList"></div>
-  <div class="btns"><button class="sbtn" id="favCsv">Exporter CSV</button><button class="sbtn alt" id="favClear">Tout supprimer</button></div>
+  <div class="btns"><button class="sbtn" id="favCsv">Exporter CSV</button><button class="sbtn" id="favGpx" style="background:#0b5fa5">Envoyer vers Boating (GPX)</button><button class="sbtn alt" id="favClear">Tout supprimer</button></div>
   <p class="note" style="margin-top:12px">Les points sont enregistrés sur cet appareil uniquement.</p>
 </div></div>
 
@@ -490,17 +491,7 @@
     $("lnkGmaps").href = "https://www.google.com/maps/search/?api=1&query=" + ll;
     $("lnkWaze").href = "https://waze.com/ul?ll=" + ll + "&navigate=yes";
     $("lnkGeop").href = "https://www.geoportail.gouv.fr/carte?c=" + cur.lon.toFixed(6) + "," + cur.lat.toFixed(6) + "&z=18&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes";
-    // Navionics Boating : la clé est le point encodé au format « polyline » (précision 1e-5)
-    $("lnkBoat").href = "https://webapp.navionics.com/#boating@14&key=" + encodeURIComponent(polyline(cur.lat, cur.lon));
     save("ct_last", { lat: cur.lat, lon: cur.lon });
-  }
-  function polyline(lat, lon) {
-    return [lat, lon].map(function (v) {
-      var n = Math.round(v * 1e5), s = "";
-      n = n < 0 ? ~(n << 1) : n << 1;
-      while (n >= 0x20) { s += String.fromCharCode((0x20 | (n & 0x1f)) + 63); n >>= 5; }
-      return s + String.fromCharCode(n + 63);
-    }).join("");
   }
   function setPoint(lat, lon, from, extra) {
     cur = { lat: lat, lon: lon };
@@ -745,6 +736,40 @@
     });
     download("points_" + new Date().toISOString().slice(0, 10) + ".csv", rows);
   };
+
+  // ---------- Navionics Boating (via fichier GPX) ----------
+  function gpx(points) {
+    var x = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="CoordTool" xmlns="http://www.topografix.com/GPX/1/1">\n' +
+      points.map(function (p) {
+        return '  <wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + x(p.name) + "</name>" +
+          (p.date ? "<time>" + p.date + "</time>" : "") + "</wpt>";
+      }).join("\n") + "\n</gpx>\n";
+  }
+  function sendGpx(points, fname) {
+    var blob = new Blob([gpx(points)], { type: "application/gpx+xml" });
+    var file = null;
+    try { file = new File([blob], fname, { type: "application/gpx+xml" }); } catch (e) {}
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: fname }).catch(function (e) { if (e && e.name !== "AbortError") dl(); });
+    } else dl();
+    function dl() {
+      var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+      toast("Fichier GPX enregistré : ouvrez-le avec Boating");
+    }
+  }
+  $("boatBtn").onclick = function () {
+    if (!cur) { toast("Saisissez d'abord une coordonnée"); return; }
+    var name = prompt("Nom du marqueur dans Boating :", "Point " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
+    if (name === null) return;
+    sendGpx([{ name: name || "Point", lat: cur.lat, lon: cur.lon, date: new Date().toISOString() }], (name || "point").replace(/[^\w\-]+/g, "_").slice(0, 40) + ".gpx");
+  };
+  $("favGpx").onclick = function () {
+    var h = load("ct_hist", []); if (!h.length) { toast("Aucun point favori"); return; }
+    sendGpx(h, "points_" + new Date().toISOString().slice(0, 10) + ".gpx");
+  };
+
   function download(name, rows) {
     var csv = "﻿" + rows.map(function (r) { return r.map(function (c) { c = sp(c == null ? "" : String(c)); return /[;"\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
