@@ -1007,7 +1007,7 @@ function VueAccueil({ data, setData, onSave, onUpdate, onExportPDF, editingDocId
 
 
 // ─── VUE ARCHIVE ─────────────────────────────────────────────────────────────
-function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantiers }) {
+function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantiers, onRefresh }) {
   const [view, setView] = useState("chantiers");
   const [chantierOuvert, setChantierOuvert] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -1019,6 +1019,8 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantie
   const [showMoveModal, setShowMoveModal] = useState(null);
   const [selectedDocs, setSelectedDocs] = useState(new Set());
   const [exportingPDF, setExportingPDF] = useState(false);
+  const [renameChantier, setRenameChantier] = useState(null);
+  const [renameNom, setRenameNom] = useState("");
   // chantiers et setChantiers passés en props depuis App
 
   const saveChantiers = async (list) => {
@@ -1060,6 +1062,43 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantie
   supprimerChantier = (nom) => {
     saveChantiers(chantiers.filter(c => c !== nom));
     if (chantierOuvert === nom) setChantierOuvert(null);
+  };
+
+  const renommerChantier = async (ancienNom, nouveauNom) => {
+    nouveauNom = nouveauNom.trim();
+    if (!nouveauNom || nouveauNom === ancienNom || chantiers.includes(nouveauNom)) return;
+    // Mettre à jour la liste des chantiers
+    const nouvelleListe = chantiers.map(c => c === ancienNom ? nouveauNom : c);
+    setChantiers(nouvelleListe);
+    localStorage.setItem("bonna_chantiers", JSON.stringify(nouvelleListe));
+    if (chantierOuvert === ancienNom) setChantierOuvert(nouveauNom);
+    // Mettre à jour les documents sur Supabase
+    if (supabaseReady()) {
+      try {
+        // Récupérer tous les docs avec l'ancien chantier
+        const res = await sbFetch("/documents?chantier=eq." + encodeURIComponent(ancienNom) + "&select=id");
+        const docIds = res.ok ? await res.json() : [];
+        for (const doc of (docIds||[])) {
+          await sbFetch("/documents?id=eq." + doc.id, {
+            method: "PATCH",
+            prefer: "return=minimal",
+            body: JSON.stringify({ chantier: nouveauNom })
+          });
+        }
+        // Renommer dans la table chantiers
+        const resC = await sbFetch("/chantiers?nom=eq." + encodeURIComponent(ancienNom) + "&select=id");
+        const rows = resC.ok ? await resC.json() : [];
+        for (const row of (rows||[])) {
+          await sbFetch("/chantiers?id=eq." + row.id, {
+            method: "PATCH",
+            prefer: "return=minimal",
+            body: JSON.stringify({ nom: nouveauNom })
+          });
+        }
+      } catch(e) { console.error("Rename chantier:", e); }
+    }
+    // Rafraîchir les docs depuis Supabase
+    if (onRefresh) setTimeout(onRefresh, 500);
   };
 
   const norm = (s) => (s || "").trim().toLowerCase();
@@ -1329,6 +1368,7 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantie
                         <div style={{fontSize:11,color:C.gray,marginTop:1}}>{nb} document{nb!==1?"s":""}</div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button onClick={e=>{e.stopPropagation();setRenameChantier(nom);setRenameNom(nom);}} style={{...s.iconBtn,color:C.blueMid}} title="Renommer le dossier">✏️</button>
                         <button onClick={e=>{e.stopPropagation();setConfirmDeleteChantier(nom);}} style={{...s.iconBtn,color:C.danger}} title="Supprimer le dossier">🗑</button>
                         <span style={{color:C.gray,fontSize:18}}>›</span>
                       </div>
@@ -1479,6 +1519,30 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantie
             </div>
           ))}
         </>
+      )}
+
+      {renameChantier && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:C.white,borderRadius:14,padding:22,width:"100%",maxWidth:340,boxShadow:"0 8px 40px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>✏️ Renommer le dossier</div>
+            <div style={{fontSize:12,color:C.gray,marginBottom:12,lineHeight:1.5}}>Ancien nom : <strong>"{renameChantier}"</strong></div>
+            <label style={s.label}>Nouveau nom</label>
+            <input
+              value={renameNom}
+              onChange={e=>setRenameNom(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"){renommerChantier(renameChantier,renameNom);setRenameChantier(null);}if(e.key==="Escape")setRenameChantier(null);}}
+              autoFocus
+              style={{...s.input,width:"100%",boxSizing:"border-box",marginTop:4,marginBottom:16}}
+            />
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setRenameChantier(null);setRenameNom("");}} style={{flex:1,padding:"11px",background:C.bg,border:"1.5px solid "+C.grayLight,borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:600,cursor:"pointer"}}>Annuler</button>
+              <button onClick={()=>{renommerChantier(renameChantier,renameNom);setRenameChantier(null);setRenameNom("");}} disabled={!renameNom.trim()||renameNom.trim()===renameChantier||chantiers.includes(renameNom.trim())} style={{flex:1,padding:"11px",background:C.blueMid,border:"none",borderRadius:9,fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer",color:"#fff",opacity:(!renameNom.trim()||renameNom.trim()===renameChantier||chantiers.includes(renameNom.trim()))?0.5:1}}>✏️ Renommer</button>
+            </div>
+            {chantiers.includes(renameNom.trim()) && renameNom.trim() !== renameChantier && (
+              <div style={{fontSize:11,color:C.danger,marginTop:8}}>Ce nom existe déjà.</div>
+            )}
+          </div>
+        </div>
       )}
 
       {confirmDeleteChantier && (
@@ -2193,7 +2257,7 @@ function App() {
       {tab==="securite"&&<VueSecurite data={securite} setData={setSecurite} onSave={()=>saveDoc("securite",securite)} onUpdate={()=>updateDoc("securite",securite)} onExportPDF={()=>genPDF("securite",securite)} editingDocId={editingDocId} onClear={()=>{setSecurite(emptySecurite());setEditingDocId(null);}}/>}
       {tab==="notice"&&<VueNotice data={notice} setData={setNotice} onSave={()=>saveDoc("notice",notice)} onUpdate={()=>updateDoc("notice",notice)} onExportPDF={()=>genPDF("notice",notice)} editingDocId={editingDocId} onClear={()=>{setNotice(emptyNotice());setEditingDocId(null);}}/>}
       {tab==="accueil"&&<VueAccueil data={accueil} setData={setAccueil} onSave={()=>saveDoc("accueil",accueil)} onUpdate={()=>updateDoc("accueil",accueil)} onExportPDF={()=>genPDF("accueil",accueil)} editingDocId={editingDocId} onClear={()=>{setAccueil(emptyAccueil());setEditingDocId(null);}}/>}
-      {tab==="archive"&&<VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)} chantiers={chantiers} setChantiers={setChantiers}/>}
+      {tab==="archive"&&<VueArchive docs={docs} onDelete={deleteDoc} onEdit={editDoc} onExportPDF={(doc)=>genPDF(doc.type,doc.data)} chantiers={chantiers} setChantiers={setChantiers} onRefresh={fetchDocs}/>}
       {tab==="penibilite"&&<VuePenibilite docs={docs}/>}
       {tab==="carnet"&&<VueCarnetPlongee docs={docs}/>}
       <Toast message={toast}/>
