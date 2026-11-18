@@ -1267,26 +1267,23 @@ function VueArchive({ docs, onDelete, onEdit, onExportPDF, chantiers, setChantie
 
     const htmlOut = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Export BONNA TP</title><style>"+css+"</style></head><body>"+sections.join("")+"</body></html>";
 
-    // Ouvrir dans une iframe cachée et déclencher l'impression PDF
-    const printFrame = document.createElement("iframe");
-    printFrame.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
-    document.body.appendChild(printFrame);
-
-    printFrame.onload = () => {
-      try {
-        printFrame.contentWindow.focus();
-        printFrame.contentWindow.print();
-      } catch(e) {
-        // Fallback : ouvrir dans un nouvel onglet
-        const w = window.open("", "_blank");
-        if(w) { w.document.write(htmlOut); w.document.close(); w.focus(); w.print(); }
-      }
-      setTimeout(() => {
-        document.body.removeChild(printFrame);
-      }, 2000);
-    };
-
-    printFrame.srcdoc = htmlOut;
+    // Export PDF : Blob URL (compatible iOS Safari)
+    const blobOut = new Blob([htmlOut], {type:"text/html;charset=utf-8"});
+    const blobUrlOut = URL.createObjectURL(blobOut);
+    const isIOSx = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOSx) {
+      window.open(blobUrlOut, "_blank");
+    } else {
+      const printFrame = document.createElement("iframe");
+      printFrame.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
+      document.body.appendChild(printFrame);
+      printFrame.onload = () => {
+        try { printFrame.contentWindow.focus(); printFrame.contentWindow.print(); }
+        catch(e) { window.open(blobUrlOut, "_blank"); }
+        setTimeout(() => { document.body.removeChild(printFrame); URL.revokeObjectURL(blobUrlOut); }, 2000);
+      };
+      printFrame.src = blobUrlOut;
+    }
   };
   const icons = { securite: "🤿", notice: "📋", accueil: "🛡️" };
   const labels = { securite: "Fiche Sécurité", notice: "Notice Poste", accueil: "Accueil QSE" };
@@ -1850,16 +1847,26 @@ function VueCarnetPlongee({ docs }) {
       +"</div>"
       +"</body></html>";
 
-    // Impression directe PDF via iframe
-    const pf=document.createElement("iframe");
-    pf.style.cssText="position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
-    document.body.appendChild(pf);
-    pf.onload=()=>{
-      try{pf.contentWindow.focus();pf.contentWindow.print();}
-      catch(e){const w=window.open("","_blank");if(w){w.document.write(html2);w.document.close();w.focus();w.print();}}
-      setTimeout(()=>{document.body.removeChild(pf);setExportingDiver(null);},2000);
-    };
-    pf.srcdoc=html2;
+    // Export PDF : Blob URL (compatible iOS Safari)
+    const blob = new Blob([html2], {type:"text/html;charset=utf-8"});
+    const blobUrl = URL.createObjectURL(blob);
+    // Sur iOS, on ouvre la page dans un nouvel onglet → l'utilisateur peut Partager → Imprimer
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOS) {
+      window.open(blobUrl, "_blank");
+      setExportingDiver(null);
+    } else {
+      // Desktop/Android : iframe + print
+      const pf=document.createElement("iframe");
+      pf.style.cssText="position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
+      document.body.appendChild(pf);
+      pf.onload=()=>{
+        try{pf.contentWindow.focus();pf.contentWindow.print();}
+        catch(e){window.open(blobUrl,"_blank");}
+        setTimeout(()=>{document.body.removeChild(pf);URL.revokeObjectURL(blobUrl);setExportingDiver(null);},2000);
+      };
+      pf.src=blobUrl;
+    }
   };
 
   const exportCarnetExcel = (nom, arr) => {
@@ -2216,17 +2223,25 @@ function App() {
     }
     const lbl={securite:"Fiche_Securite",notice:"Notice_Poste",accueil:"Accueil_QSE"};
     const out="<!DOCTYPE html><html><head><meta charset='UTF-8'><title>"+lbl[type]+"</title><style>"+css+"</style></head><body><div class='logo'><span class='logo-box'>BONNA TP</span><span style='color:#888;font-size:10px'>"+date+"</span></div>"+body+"<div class='note'>📱 iPhone : Partager → Imprimer ou Enregistrer en PDF</div></body></html>";
-    // Impression directe en PDF via iframe
-    const pf=document.createElement("iframe");
-    pf.style.cssText="position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
-    document.body.appendChild(pf);
-    pf.onload=()=>{
-      try{pf.contentWindow.focus();pf.contentWindow.print();}
-      catch(e){const w=window.open("","_blank");if(w){w.document.write(out);w.document.close();w.focus();w.print();}}
-      setTimeout(()=>document.body.removeChild(pf),2000);
-    };
-    pf.srcdoc=out;
-    showToast("✓ Impression PDF lancée");
+    // Export PDF : Blob URL (compatible iOS Safari)
+    const blobMain = new Blob([out], {type:"text/html;charset=utf-8"});
+    const blobUrlMain = URL.createObjectURL(blobMain);
+    const isIOSm = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOSm) {
+      window.open(blobUrlMain, "_blank");
+      showToast("✓ Ouvert — Partager → Imprimer pour PDF");
+    } else {
+      const pf=document.createElement("iframe");
+      pf.style.cssText="position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
+      document.body.appendChild(pf);
+      pf.onload=()=>{
+        try{pf.contentWindow.focus();pf.contentWindow.print();}
+        catch(e){window.open(blobUrlMain,"_blank");}
+        setTimeout(()=>{document.body.removeChild(pf);URL.revokeObjectURL(blobUrlMain);},2000);
+      };
+      pf.src=blobUrlMain;
+      showToast("✓ Impression PDF lancée");
+    }
   };
 
   const tabs=[{id:"securite",num:"FO-SEC",label:"Fiche Sécurité"},{id:"notice",num:"035_QSE",label:"Notice Poste"},{id:"accueil",num:"043_QSE",label:"Accueil QSE"},{id:"archive",num:"ARCHIVE",label:"Documents"},{id:"penibilite",num:"C2P",label:"Pénibilité"},{id:"carnet",num:"CARNET",label:"Carnet Plongée"}];
